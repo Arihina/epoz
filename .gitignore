@@ -1,0 +1,9 @@
+/venv
+*.pem
+test.py
+/chroma_db
+chunks_*.txt
+input.docx
+output.md
+output_clean.md
+__pycache__
