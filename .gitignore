@@ -5,5 +5,4 @@ test.py
 chunks_*.txt
 input.docx
 output.md
-output_clean.md
 __pycache__
