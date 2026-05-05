@@ -5,12 +5,11 @@ openssl req -x509 -newkey rsa:4096 \
 -days 365 \
 -nodes
 ```
-
 ```
 curl -fsSl https://ollama.com/install.sh | sh
 ```
 ```
-ollama pull gemma2:2b
+ollama pull gemma2:9b
 ```
 ```
 sudo apt install pandoc
@@ -19,6 +18,9 @@ sudo apt install pandoc
 python3 -m venv venv
 source venv/bin/activate
 pip3 install -r requirements.txt
+```
+```
+python3 create_collection.py
 ```
 ```
 python3 main.py

@@ -140,7 +140,8 @@ print("ОБРАБОТКА ДОКУМЕНТА")
 print("="*80)
 
 print("1. Конвертация DOCX в MD...")
-docx_to_md("input.docx", "output.md")
+print("...Пропущено...")
+# docx_to_md("input.docx", "output.md")
 
 print("2. Чтение MD файла...")
 with open("output_clean.md", "r", encoding="utf-8") as f:

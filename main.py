@@ -4,8 +4,10 @@ from fastapi import FastAPI, Body
 from sentence_transformers import SentenceTransformer
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from starlette.concurrency import iterate_in_threadpool
 import ollama
+import json
 import uvicorn
 from rank_bm25 import BM25Okapi
 import chromadb
@@ -30,14 +32,14 @@ metadatas = []
 
 try:
     all_results = collection.get(include=["documents", "metadatas"])
-    
+
     if all_results and all_results['documents']:
         documents = all_results['documents']
         metadatas = all_results['metadatas']
         print(f"Загружено {len(documents)} документов из ChromaDB")
     else:
         print("Коллекция пуста")
-        
+
 except Exception as e:
     print(f"Ошибка при загрузке документов из ChromaDB: {e}")
     documents = []
@@ -138,7 +140,7 @@ def build_rag_prompt(retrieved_docs, history, user_question):
 def bm25_search(query, top_k=3):
     if bm25 is None or not documents:
         return []
-        
+
     tokenized_query = query.lower().split()
 
     scores = bm25.get_scores(tokenized_query)
@@ -170,22 +172,23 @@ def retrieve_docs(query, top_k=3):
             convert_to_numpy=True,
             normalize_embeddings=True
         )[0].tolist()
-        
+
         results = collection.query(
             query_embeddings=[query_embedding],
             n_results=top_k,
             include=["documents", "metadatas", "distances"]
         )
-        
+
         vector_results = []
         if results['documents'] and results['documents'][0]:
             for i in range(len(results['documents'][0])):
                 distance = float(results['distances'][0][i])
                 score = 1 - distance
-                
+
                 if score >= RETRIEVAL_THRESHOLD:
-                    metadata = results['metadatas'][0][i] if results['metadatas'] and results['metadatas'][0] else {}
-                    
+                    metadata = results['metadatas'][0][i] if results['metadatas'] and results['metadatas'][0] else {
+                    }
+
                     vector_results.append({
                         "text": results['documents'][0][i],
                         "source": metadata.get("source", "unknown"),
@@ -240,7 +243,7 @@ def rag_ollama_answer(user_question, chat_history):
             prompt = build_rag_prompt(retrieved, chat_history, user_question)
 
     response = ollama_client.chat(
-        model='gemma2:2b',
+        model='gemma2:9b',
         messages=[{"role": "user", "content": prompt}]
     )
 
@@ -256,6 +259,42 @@ def rag_ollama_answer(user_question, chat_history):
     chat_history.append(("assistant", answer))
 
     return answer, chat_history
+
+
+def rag_ollama_stream(user_question, chat_history):
+    if is_small_talk(user_question):
+        prompt = build_general_prompt(chat_history, user_question)
+        retrieved = None
+    else:
+        retrieved = retrieve_docs(user_question, top_k=3)
+        if not retrieved or retrieved[0]["score"] < 0.5:
+            prompt = build_general_prompt(chat_history, user_question)
+        else:
+            prompt = build_rag_prompt(retrieved, chat_history, user_question)
+
+    stream = ollama_client.chat(
+        model="gemma2:9b",
+        messages=[{"role": "user", "content": prompt}],
+        stream=True,
+    )
+
+    full_answer = ""
+    for chunk in stream:
+        token = chunk["message"]["content"]
+        full_answer += token
+        yield token
+
+    if not is_small_talk(user_question) and retrieved:
+        used_sources = find_used_sources(full_answer, retrieved)
+        if used_sources:
+            sources_text = "\n\nИсточники:\n" + \
+                "\n".join(f"- {s}" for s in used_sources)
+            yield sources_text
+            full_answer += sources_text
+
+    chat_history.append(("user", user_question))
+    chat_history.append(("assistant", full_answer))
+
 
 app = FastAPI()
 app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
@@ -283,11 +322,23 @@ ALLOWED_IMAGE_TYPES = {
 
 @app.post("/upload/text")
 async def upload_text(item: dict = Body(...)):
-    answer, _ = rag_ollama_answer(item['message'].replace("?", ""), chat_history)
-    return {
-        "sources": None,
-        "answer": answer
-    }
+    user_question = item["message"].replace("?", "")
+
+    async def event_stream():
+        sync_gen = rag_ollama_stream(user_question, chat_history)
+        async for token in iterate_in_threadpool(sync_gen):
+            payload = json.dumps({"token": token}, ensure_ascii=False)
+            yield f"data: {payload}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.get("/")
@@ -309,5 +360,6 @@ if __name__ == "__main__":
         port=8443,
         ssl_keyfile="key.pem",
         ssl_certfile="cert.pem",
-        reload=True
+        reload=True,
+        timeout_keep_alive=300
     )
