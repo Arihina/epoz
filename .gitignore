@@ -6,3 +6,6 @@ chunks_*.txt
 input.docx
 output.md
 __pycache__
+*.db
+*.db-shm
+*.db-wal
