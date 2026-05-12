@@ -6,7 +6,7 @@ from app.core.retrieval import retrieve, DocResult
 
 
 OLLAMA_HOST = "http://localhost:11434"
-OLLAMA_MODEL = "gemma2:9b"
+OLLAMA_MODEL = "gemma2:2b"
 RAG_MIN_SCORE = 0.5
 
 
@@ -88,8 +88,7 @@ def find_used_sources(answer: str, docs: list[DocResult]) -> list[str]:
 def stream_answer(
     question: str,
     history: list[tuple[str, str]],
-) -> Generator[tuple[str, list[str] | None], None, None]:
-
+) -> Generator[tuple[str, list[str] | None, list[DocResult] | None], None, None]:
     if is_small_talk(question):
         prompt = _general_prompt(history, question)
         docs = None
@@ -101,22 +100,22 @@ def stream_answer(
         else:
             prompt = _rag_prompt(docs, history, question)
 
+    yield "", None, docs
+
     stream = _client.chat(
         model=OLLAMA_MODEL,
         messages=[{"role": "user", "content": prompt}],
         stream=True,
     )
-
     full_answer = ""
     for chunk in stream:
         token: str = chunk["message"]["content"]
         full_answer += token
-        yield token, None
+        yield token, None, None
 
     used_sources: list[str] | None = None
     if docs:
         used = find_used_sources(full_answer, docs)
         if used:
             used_sources = used
-
-    yield "", used_sources
+    yield "", used_sources, None

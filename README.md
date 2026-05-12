@@ -156,14 +156,15 @@ message_feedback
  
 #### `POST /sessions/{session_id}/chat`
 Отправить вопрос. Ответ возвращается потоком (SSE).
- 
+
 Тело запроса:
 ```json
 { "message": "Что такое RAG?" }
 ```
- 
+
 Поток событий:
 ```
+data: {"chunks": [{"text": "RAG (Retrieval-Augmented Generation) — метод...", "source": "doc1.pdf", "score": 0.87}, ...]}
 data: {"token": "RAG"}
 data: {"token": " — это"}
 data: {"token": " метод..."}
@@ -172,6 +173,12 @@ data: {"token": "\n\nИсточники:\n- doc1.pdf"}
 data: {"message_id": 2}
 data: [DONE]
 ```
+
+Порядок событий:
+- `chunks` — **первое** событие, приходит до начала генерации; содержит список извлечённых фрагментов, которые использовались как контекст для ответа (только при RAG-запросе, при small-talk отсутствует)
+- `token` — токены ответа LLM, включая блок источников в конце
+- `message_id` — ID сохранённого сообщения, используется для отправки фидбэка
+- `[DONE]` — завершение потока
  
 > `message_id` из предпоследнего события используется для отправки фидбэка.
  
@@ -229,9 +236,9 @@ curl -k -X POST https://localhost:8443/sessions \
 curl -k https://localhost:8443/sessions
  
 # Отправить вопрос
-curl -k -X POST https://localhost:8443/sessions/1/chat \
+curl -k -X POST https://localhost:8443/sessions/4/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "Что такое RAG"}' \
+  -d '{"message": "Что такое Меры ограничительного характера"}' \
   --no-buffer
  
 # История сообщений

@@ -1,12 +1,3 @@
-"""
-POST /sessions                      — создать новый чат
-GET  /sessions                      — список чатов
-GET  /sessions/{id}/messages        — история сообщений чата
-DELETE /sessions/{id}               — удалить чат
-
-POST /sessions/{id}/chat            — отправить вопрос (SSE-стриминг)
-GET  /sessions/{id}/reset           — сбросить историю в памяти (не удаляет из БД)
-"""
 from __future__ import annotations
 
 import json
@@ -99,8 +90,20 @@ def chat(session_id: int, body: dict = Body(...), db: Session = Depends(get_db))
     def _gen():
         full_answer = ""
         sources: list[str] | None = None
+        first = True
 
-        for token, used in stream_answer(question, history):
+        for token, used, chunks in stream_answer(question, history):
+            if first:
+                first = False
+                if chunks:
+                    chunks_payload = [
+                        {"text": c["text"], "source": c["source"],
+                            "score": round(c["score"], 3)}
+                        for c in chunks
+                    ]
+                    yield f"data: {json.dumps({'chunks': chunks_payload}, ensure_ascii=False)}\n\n"
+                continue
+
             full_answer += token
             sources = used
             if token:
@@ -123,7 +126,6 @@ def chat(session_id: int, body: dict = Body(...), db: Session = Depends(get_db))
 
         history.append(("user", question))
         history.append(("assistant", full_answer))
-
         yield "data: [DONE]\n\n"
 
     async def _async_gen():
