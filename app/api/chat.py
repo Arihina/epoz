@@ -3,15 +3,14 @@ from __future__ import annotations
 import json
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import iterate_in_threadpool
 
-from app.db.database import get_db, SessionLocal
+from app.db.database import get_db, AsyncSessionLocal
 from app.db import crud
 from app.core.llm import stream_answer
 
 router = APIRouter()
-
 
 _histories: dict[int, list[tuple[str, str]]] = {}
 
@@ -23,7 +22,7 @@ def _fmt_session(s) -> dict:
 
 
 def _fmt_message(m) -> dict:
-    sources = json.loads(m.sources) if m.sources else []
+    sources = m.sources if m.sources else []
     fb = m.feedback
     return {
         "id": m.id, "role": m.role, "content": m.content, "sources": sources,
@@ -33,44 +32,55 @@ def _fmt_message(m) -> dict:
 
 
 @router.post("/sessions", status_code=201)
-def create_session(body: dict = Body(default={}), db: Session = Depends(get_db)):
-    s = crud.create_session(db, title=body.get("title"))
+async def create_session(
+    body: dict = Body(default={}),
+    db: AsyncSession = Depends(get_db),
+):
+    s = await crud.create_session(db, title=body.get("title"))
     return _fmt_session(s)
 
 
 @router.get("/sessions")
-def list_sessions(db: Session = Depends(get_db)):
-    return [_fmt_session(s) for s in crud.list_sessions(db)]
+async def list_sessions(db: AsyncSession = Depends(get_db)):
+    return [_fmt_session(s) for s in await crud.list_sessions(db)]
 
 
 @router.get("/sessions/{session_id}/messages")
-def get_messages(session_id: int, db: Session = Depends(get_db)):
-    if not crud.get_session(db, session_id):
+async def get_messages(session_id: int, db: AsyncSession = Depends(get_db)):
+    if not await crud.get_session(db, session_id):
         raise HTTPException(404, "Чат не найден")
-    return [_fmt_message(m) for m in crud.get_messages(db, session_id)]
+    return [_fmt_message(m) for m in await crud.get_messages(db, session_id)]
 
 
 @router.patch("/sessions/{session_id}")
-def rename_session(session_id: int, body: dict = Body(...), db: Session = Depends(get_db)):
+async def rename_session(
+    session_id: int,
+    body: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
     title = body.get("title", "").strip()
     if not title:
         raise HTTPException(422, "title не может быть пустым")
-    s = crud.rename_session(db, session_id, title)
+    s = await crud.rename_session(db, session_id, title)
     if not s:
         raise HTTPException(404, "Чат не найден")
     return _fmt_session(s)
 
 
 @router.delete("/sessions/{session_id}", status_code=204)
-def delete_session(session_id: int, db: Session = Depends(get_db)):
-    if not crud.delete_session(db, session_id):
+async def delete_session(session_id: int, db: AsyncSession = Depends(get_db)):
+    if not await crud.delete_session(db, session_id):
         raise HTTPException(404, "Чат не найден")
     _histories.pop(session_id, None)
 
 
 @router.post("/sessions/{session_id}/chat")
-def chat(session_id: int, body: dict = Body(...), db: Session = Depends(get_db)):
-    s = crud.get_session(db, session_id)
+async def chat(
+    session_id: int,
+    body: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    s = await crud.get_session(db, session_id)
     if not s:
         raise HTTPException(404, "Чат не найден")
 
@@ -79,13 +89,24 @@ def chat(session_id: int, body: dict = Body(...), db: Session = Depends(get_db))
         raise HTTPException(422, "Пустой вопрос")
 
     if s.title is None:
-        db.query(type(s)).filter_by(id=session_id).update(
-            {"title": question[:80] + ("…" if len(question) > 80 else "")}
+        await crud.rename_session(
+            db, session_id,
+            question[:80] + ("…" if len(question) > 80 else "")
         )
-        db.commit()
 
     history = _histories.setdefault(
-        session_id, crud.build_history(db, session_id))
+        session_id, await crud.build_history(db, session_id)
+    )
+
+    async def _save(full_answer: str, sources: list[str] | None):
+        async with AsyncSessionLocal() as write_db:
+            await crud.add_message(write_db, session_id, "user", question)
+            msg = await crud.add_message(
+                write_db, session_id, "assistant", full_answer, sources
+            )
+            return msg.id
+
+    state: dict = {"answer": "", "sources": None, "message_id": None}
 
     def _gen():
         full_answer = ""
@@ -98,7 +119,7 @@ def chat(session_id: int, body: dict = Body(...), db: Session = Depends(get_db))
                 if chunks:
                     chunks_payload = [
                         {"text": c["text"], "source": c["source"],
-                            "score": round(c["score"], 3)}
+                         "score": round(c["score"], 3)}
                         for c in chunks
                     ]
                     yield f"data: {json.dumps({'chunks': chunks_payload}, ensure_ascii=False)}\n\n"
@@ -115,22 +136,19 @@ def chat(session_id: int, body: dict = Body(...), db: Session = Depends(get_db))
             yield f"data: {json.dumps({'token': src_text}, ensure_ascii=False)}\n\n"
             full_answer += src_text
 
-        write_db = SessionLocal()
-        try:
-            crud.add_message(write_db, session_id, "user", question)
-            msg = crud.add_message(write_db, session_id,
-                                   "assistant", full_answer, sources)
-            yield f"data: {json.dumps({'message_id': msg.id}, ensure_ascii=False)}\n\n"
-        finally:
-            write_db.close()
-
-        history.append(("user", question))
-        history.append(("assistant", full_answer))
-        yield "data: [DONE]\n\n"
+        state["answer"] = full_answer
+        state["sources"] = sources
 
     async def _async_gen():
         async for chunk in iterate_in_threadpool(_gen()):
             yield chunk
+
+        message_id = await _save(state["answer"], state["sources"])
+        yield f"data: {json.dumps({'message_id': message_id}, ensure_ascii=False)}\n\n"
+
+        history.append(("user", question))
+        history.append(("assistant", state["answer"]))
+        yield "data: [DONE]\n\n"
 
     return StreamingResponse(
         _async_gen(),
@@ -140,6 +158,6 @@ def chat(session_id: int, body: dict = Body(...), db: Session = Depends(get_db))
 
 
 @router.get("/sessions/{session_id}/reset")
-def reset(session_id: int):
+async def reset(session_id: int):
     _histories.pop(session_id, None)
     return {"status": "ok"}

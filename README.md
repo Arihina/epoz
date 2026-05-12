@@ -1,3 +1,4 @@
+## Подготовка перед запуском
 ```
 openssl req -x509 -newkey rsa:4096 \
 -keyout key.pem \
@@ -23,38 +24,57 @@ pip3 install -r requirements.txt
 python3 create_collection.py
 ```
 ```
+docker compose -d
+```
+```
+alembic upgrade head
+```
+```
 python3 main.py
 ```
 
 ## База данных
- 
-Файл `rag_history.db` создаётся автоматически при первом запуске рядом с `main.py`.
- 
+
+PostgreSQL 16. Подключение настраивается через переменные окружения в `.env`:
+
+```env
+DB_HOST=db
+DB_PORT=5432
+DB_USER=rag_user
+DB_PASSWORD=rag_pass
+DB_NAME=rag_db
+```
+
+Миграции управляются через Alembic. Применить:
+```bash
+alembic upgrade head
+```
+
 ```
 chat_sessions
-├── id          INTEGER  PK autoincrement
-├── title       TEXT     nullable (подставляется из первого вопроса если не указан)
-├── created_at  DATETIME
-└── updated_at  DATETIME
- 
+├── id          SERIAL        PK
+├── title       VARCHAR(255)  nullable (подставляется из первого вопроса если не указан)
+├── created_at  TIMESTAMPTZ
+└── updated_at  TIMESTAMPTZ
+
 chat_messages
-├── id          INTEGER  PK autoincrement
-├── session_id  INTEGER  FK → chat_sessions.id
-├── role        TEXT     "user" | "assistant"
+├── id          SERIAL        PK
+├── session_id  INTEGER       FK → chat_sessions.id
+├── role        VARCHAR(16)   "user" | "assistant"
 ├── content     TEXT
-├── sources     TEXT     JSON-список источников, например ["doc1.pdf"] или NULL
-└── created_at  DATETIME
- 
+├── sources     JSONB         список источников
+└── created_at  TIMESTAMPTZ
+
 message_feedback
-├── id          INTEGER  PK autoincrement
-├── message_id  INTEGER  FK → chat_messages.id (уникальный — одна оценка на сообщение)
-├── vote        INTEGER  1 = лайк / -1 = дизлайк / NULL = без оценки
-├── comment     TEXT     nullable
-├── created_at  DATETIME
-└── updated_at  DATETIME
+├── id          SERIAL        PK
+├── message_id  INTEGER       FK → chat_messages.id (уникальный — одна оценка на сообщение)
+├── vote        INTEGER       1 = лайк / -1 = дизлайк / NULL = без оценки
+├── comment     TEXT          nullable
+├── created_at  TIMESTAMPTZ
+└── updated_at  TIMESTAMPTZ
 ```
- 
-Удаление каскадное
+
+Удаление каскадное. `sources` хранится как нативный JSONB — десериализация на стороне приложения не требуется.
 
 ## API
  
@@ -236,7 +256,7 @@ curl -k -X POST https://localhost:8443/sessions \
 curl -k https://localhost:8443/sessions
  
 # Отправить вопрос
-curl -k -X POST https://localhost:8443/sessions/4/chat \
+curl -k -X POST https://localhost:8443/sessions/1/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "Что такое Меры ограничительного характера"}' \
   --no-buffer

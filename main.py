@@ -3,19 +3,25 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from app.db.database import create_tables
+from contextlib import asynccontextmanager
+
+from app.db.database import create_tables  
 from app.api.chat import router as chat_router
 from app.api.feedback import router as feedback_router
 
 
-create_tables()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await create_tables()
+    yield
 
 
 app = FastAPI(
-    title="RAG Assistant API",
+    title="RAG EPoZ Assistant API",
     version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 
