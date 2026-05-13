@@ -1,224 +1,371 @@
-import pypandoc
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+"""
+Индексирует результаты парсинга MinerU в ChromaDB.
+
+Структура входных данных:
+    <input_dir>/
+        <doc_name>/
+            office/
+                *model.json            ← приоритетный источник
+                *content_list_v2.json  ← запасной
+                *content_list.json     ← запасной (плоский)
+
+Использование:
+    pip install chromadb sentence-transformers
+
+    python index_to_chroma.py \
+        --input_dir ./mineru_output \
+        --chroma_dir ./chroma_db \
+        [--collection rag_docs] \
+        [--model all-MiniLM-L6-v2] \
+        [--chunk_size 800] \
+        [--chunk_overlap 80] \
+        [--reset]
+"""
+
+import argparse
+import json
 import re
-from sentence_transformers import SentenceTransformer
+import sys
+import uuid
+from pathlib import Path
+from typing import Generator
+
 import chromadb
-import os
-from datetime import datetime
+from chromadb.config import Settings
+from sentence_transformers import SentenceTransformer
 
-def docx_to_md(input_file, output_file):
-    output = pypandoc.convert_file(
-        input_file,
-        'md',
-        format='docx',
-        extra_args=[
-            '--wrap=none',
-            '--extract-media=media'
-        ]
+DEFAULT_MODEL = "all-MiniLM-L6-v2"
+DEFAULT_CHUNK_SIZE = 800
+DEFAULT_CHUNK_OVERLAP = 80
+PASSAGE_PREFIX = "passage: "
+
+Block = dict  # {"type": str, "level": int, "text": str, "anchor": str}
+
+
+def _find_by_suffix(directory: Path, suffix: str) -> "Path | None":
+    """Возвращает первый файл, имя которого оканчивается на suffix."""
+    for f in sorted(directory.iterdir()):
+        if f.is_file() and f.name.endswith(suffix):
+            return f
+    return None
+
+
+def _strip_xml_tags(text: str) -> str:
+    """Убирает <text style=...>...</text> из model.json."""
+    return re.sub(r"<[^>]+>", "", text).strip()
+
+
+def _extract_text_model(item: dict) -> str:
+    raw = item.get("content", "")
+    return _strip_xml_tags(raw) if isinstance(raw, str) else ""
+
+
+def _extract_text_v2(item: dict) -> str:
+    itype = item.get("type", "")
+    content = item.get("content", {})
+
+    if itype == "paragraph":
+        parts = content.get("paragraph_content", [])
+    elif itype == "title":
+        parts = content.get("title_content", [])
+    elif itype == "table":
+        rows = content.get("table_content", [])
+        cells = []
+        for row in rows:
+            for cell in row:
+                for part in cell.get("paragraph_content", []):
+                    cells.append(part.get("content", "").strip())
+        return " | ".join(c for c in cells if c)
+    else:
+        return ""
+
+    return "".join(p.get("content", "") for p in parts).strip()
+
+
+def _extract_text_flat(item: dict) -> str:
+    return item.get("text", "").strip()
+
+
+def parse_model_json(path: Path) -> list:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    blocks = []
+    for page in data:
+        if not isinstance(page, list):
+            continue
+        for item in page:
+            text = _extract_text_model(item)
+            if not text:
+                continue
+            blocks.append({
+                "type":   item.get("type", "text"),
+                "level":  item.get("level", 0),
+                "text":   text,
+                "anchor": item.get("anchor", ""),
+            })
+    return blocks
+
+
+def parse_content_list_v2(path: Path) -> list:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    blocks = []
+    for page in data:
+        if not isinstance(page, list):
+            continue
+        for item in page:
+            text = _extract_text_v2(item)
+            if not text:
+                continue
+            itype = item.get("type", "text")
+            level = item.get("content", {}).get(
+                "level", 0) if itype == "title" else 0
+            blocks.append({
+                "type":   itype,
+                "level":  level,
+                "text":   text,
+                "anchor": item.get("anchor", ""),
+            })
+    return blocks
+
+
+def parse_content_list_flat(path: Path) -> list:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    blocks = []
+    for item in data:
+        text = _extract_text_flat(item)
+        if not text:
+            continue
+        blocks.append({
+            "type":   item.get("type", "text"),
+            "level":  0,
+            "text":   text,
+            "anchor": item.get("anchor", ""),
+        })
+    return blocks
+
+
+def load_blocks(office_dir: Path) -> list:
+    """
+    Ищет файлы по суффиксу (имя может содержать произвольный префикс).
+    Приоритет: *model.json → *content_list_v2.json → *content_list.json
+    """
+    candidates = [
+        ("model.json",           parse_model_json),
+        ("content_list_v2.json", parse_content_list_v2),
+        ("content_list.json",    parse_content_list_flat),
+    ]
+    for suffix, parser in candidates:
+        found = _find_by_suffix(office_dir, suffix)
+        if found:
+            print(f"  → источник: {found.name}")
+            return parser(found)
+
+    raise FileNotFoundError(f"Не найден подходящий JSON в {office_dir}")
+
+
+def _split_long_text(text: str, size: int, overlap: int) -> list:
+    if len(text) <= size:
+        return [text]
+
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    chunks, current = [], ""
+
+    for sent in sentences:
+        if len(current) + len(sent) + 1 > size and current:
+            chunks.append(current.strip())
+            current = current[-overlap:] + " " + sent if overlap else sent
+        else:
+            current = (current + " " + sent).strip()
+
+    if current:
+        chunks.append(current.strip())
+
+    return chunks or [text]
+
+
+def build_chunks(blocks: list, chunk_size: int, chunk_overlap: int) -> Generator:
+    """
+    - title  → обновляет breadcrumb, индексируется как chunk_type=heading
+    - table  → отдельный чанк, chunk_type=table
+    - text   → агрегируется в буфер до chunk_size, chunk_type=paragraph
+    """
+    breadcrumb = {}
+    buffer_text = ""
+    buffer_anchor = ""
+
+    def flush(btext, banchor):
+        btext = btext.strip()
+        if not btext:
+            return None
+        section = " > ".join(v for _, v in sorted(breadcrumb.items()) if v)
+        return {"text": btext, "section": section,
+                "anchor": banchor, "chunk_type": "paragraph"}
+
+    for block in blocks:
+        btype = block["type"]
+        level = block["level"]
+        text = block["text"]
+        anchor = block["anchor"]
+
+        if btype == "title":
+            if buffer_text:
+                result = flush(buffer_text, buffer_anchor)
+                if result:
+                    yield result
+                buffer_text, buffer_anchor = "", ""
+
+            breadcrumb = {k: v for k, v in breadcrumb.items() if k < level}
+            breadcrumb[level] = text
+
+            section = " > ".join(v for _, v in sorted(breadcrumb.items()) if v)
+            yield {"text": text, "section": section,
+                   "anchor": anchor, "chunk_type": "heading"}
+
+        elif btype == "table":
+            if buffer_text:
+                result = flush(buffer_text, buffer_anchor)
+                if result:
+                    yield result
+                buffer_text, buffer_anchor = "", ""
+
+            section = " > ".join(v for _, v in sorted(breadcrumb.items()) if v)
+            yield {"text": text, "section": section,
+                   "anchor": anchor, "chunk_type": "table"}
+
+        else:
+            if not buffer_anchor and anchor:
+                buffer_anchor = anchor
+
+            if len(buffer_text) + len(text) + 1 > chunk_size and buffer_text:
+                result = flush(buffer_text, buffer_anchor)
+                if result:
+                    for part in _split_long_text(result["text"], chunk_size, chunk_overlap):
+                        yield {**result, "text": part}
+                buffer_text = (text[-chunk_overlap:] + " " +
+                               text) if chunk_overlap else text
+                buffer_anchor = anchor
+            else:
+                buffer_text = (buffer_text + "\n" + text).strip()
+
+    if buffer_text:
+        result = flush(buffer_text, buffer_anchor)
+        if result:
+            for part in _split_long_text(result["text"], chunk_size, chunk_overlap):
+                yield {**result, "text": part}
+
+
+def index_documents(
+    input_dir: Path,
+    chroma_dir: Path,
+    collection_name: str,
+    model_name: str,
+    chunk_size: int,
+    chunk_overlap: int,
+    reset: bool,
+) -> None:
+    print(f"Загрузка модели: {model_name}")
+    embedder = SentenceTransformer(model_name)
+
+    client = chromadb.PersistentClient(
+        path=str(chroma_dir),
+        settings=Settings(anonymized_telemetry=False),
     )
-    
-    with open(output_file, 'w', encoding='utf-8') as f:
-        f.write(output)
 
-def get_splitter():
-    return RecursiveCharacterTextSplitter(
-        chunk_size=800,
-        chunk_overlap=150,
-        separators=[
-            "\n# ",
-            "\n## ",
-            "\n### ",
-            "\n\n",
-            "\n",
-            " ",
-            ""
-        ]
+    if reset and collection_name in [c.name for c in client.list_collections()]:
+        client.delete_collection(collection_name)
+        print(f"Коллекция '{collection_name}' удалена (--reset)")
+
+    collection = client.get_or_create_collection(
+        name=collection_name,
+        metadata={"hnsw:space": "cosine"},
     )
 
-def split_with_headers(md_text):
-    splitter = get_splitter()
-    
-    sections = re.split(r'(?=\n# )', md_text)
-    all_chunks = []
+    doc_dirs = sorted([
+        d for d in input_dir.iterdir()
+        if d.is_dir() and (d / "office").exists()
+    ])
 
-    for section in sections:
-        header_match = re.match(r'(#+ .+)', section)
-        header = header_match.group(1) if header_match else ""
+    if not doc_dirs:
+        print(f"Не найдено папок с подпапкой 'office' в {input_dir}")
+        sys.exit(1)
 
-        chunks = splitter.split_text(section)
-        
-        for chunk in chunks:
-            enriched_chunk = f"{header}\n{chunk}"
-            all_chunks.append(enriched_chunk)
+    print(f"Найдено документов: {len(doc_dirs)}\n")
 
-    return all_chunks
+    total_chunks = 0
 
-def save_chunks_info(chunks, filename="chunks_info.txt"):
-    with open(filename, 'w', encoding='utf-8') as f:
-        f.write("="*80 + "\n")
-        f.write("ИНФОРМАЦИЯ О ЧАНКАХ ДОКУМЕНТА\n")
-        f.write(f"Дата создания: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write("="*80 + "\n\n")
-        
-        f.write(f"Всего чанков: {len(chunks)}\n")
-        f.write(f"Источник: input.docx\n")
-        f.write(f"Модель эмбеддингов: all-MiniLM-L6-v2\n")
-        f.write(f"Размер чанка: 800 символов (перекрытие 150)\n")
-        f.write("\n" + "="*80 + "\n\n")
-        
-        
-        f.write("ПОДРОБНАЯ ИНФОРМАЦИЯ ПО КАЖДОМУ ЧАНКУ:\n")
-        f.write("="*80 + "\n\n")
-        
-        for i, chunk in enumerate(chunks):
-            f.write(f"ЧАНК #{i+1}\n")
-            f.write("-"*80 + "\n")
-            f.write(f"ID: chunk_{i}\n")
-            f.write(f"Длина: {len(chunk)} символов\n")
-            f.write(f"Количество строк: {len(chunk.split(chr(10)))}\n")
-            
-            headers = re.findall(r'#+\s+.+', chunk)
-            if headers:
-                f.write(f"Заголовки: {', '.join(headers[:3])}\n")
+    for doc_dir in doc_dirs:
+        office_dir = doc_dir / "office"
+        source_name = doc_dir.name
+        print(f"[{source_name}]")
 
-            numbered_items = re.findall(r'\d+\)', chunk)
-            if numbered_items:
-                unique_items = list(set(numbered_items))
-                f.write(f"Нумерованные пункты: {', '.join(unique_items[:5])}\n")
-            
-            nested_items = re.findall(r'\(\d+\)', chunk)
-            if nested_items:
-                unique_nested = list(set(nested_items))
-                f.write(f"Вложенная нумерация: {', '.join(unique_nested[:5])}\n")
-            
-            bullet_items = re.findall(r'^\s*[-*•]\s+.+', chunk, re.MULTILINE)
-            if bullet_items:
-                f.write(f"Маркированные списки: {len(bullet_items)} элементов\n")
-            
-            f.write("\nТЕКСТ ЧАНКА:\n")
-            f.write("-"*80 + "\n")
-            f.write(chunk)
-            f.write("\n\n" + "-"*80 + "\n")
-            f.write(f"КОНЕЦ ЧАНКА #{i+1}\n")
-            f.write("="*80 + "\n\n")
+        try:
+            blocks = load_blocks(office_dir)
+        except FileNotFoundError as e:
+            print(f"  ✗ {e}")
+            continue
 
-        f.write("\n\n" + "="*80 + "\n")
-        f.write("СПИСОК ЧАНКОВ (ДЛЯ БЫСТРОГО ПОИСКА):\n")
-        f.write("="*80 + "\n\n")
-        
-        for i, chunk in enumerate(chunks):
-            preview = chunk[:150].replace('\n', ' ')
-            f.write(f"{i+1}. {preview}...\n")
-    
-    print(f"✓ Информация о чанках сохранена в {filename}")
+        chunks = list(build_chunks(blocks, chunk_size, chunk_overlap))
+        print(f"  → чанков: {len(chunks)}")
 
-def save_chunks_summary(chunks, filename="chunks_summary.txt"):
-    """Сохраняет краткую сводку о чанках"""
-    with open(filename, 'w', encoding='utf-8') as f:
-        f.write("КРАТКАЯ СВОДКА ПО ЧАНКАМ\n")
-        f.write("="*80 + "\n\n")
-        
-        for i, chunk in enumerate(chunks):
-            preview = chunk[:100].replace('\n', ' ').strip()
-            if len(chunk) > 100:
-                preview += "..."
-            
-            chunk_type = "Обычный"
-            if re.search(r'#+\s+', chunk):
-                chunk_type = "С заголовком"
-            if re.search(r'\d+\)', chunk):
-                chunk_type = "С нумерацией"
-            if re.search(r'\(\d+\)', chunk):
-                chunk_type = "С вложенной нумерацией"
-            
-            f.write(f"{i+1:3d}. [{chunk_type:20}] {preview}\n")
-    
-    print(f"✓ Краткая сводка сохранена в {filename}")
+        if not chunks:
+            continue
 
-print("="*80)
-print("ОБРАБОТКА ДОКУМЕНТА")
-print("="*80)
+        texts = [PASSAGE_PREFIX + c["text"] for c in chunks]
+        metadatas = [
+            {
+                "source":     source_name,
+                "section":    c["section"],
+                "anchor":     c["anchor"],
+                "chunk_type": c["chunk_type"],
+            }
+            for c in chunks
+        ]
+        ids = [str(uuid.uuid4()) for _ in chunks]
 
-print("1. Конвертация DOCX в MD...")
-print("...Пропущено...")
-# docx_to_md("input.docx", "output.md")
+        embeddings = []
+        for i in range(0, len(texts), 64):
+            batch = texts[i: i + 64]
+            embeddings.extend(
+                embedder.encode(batch, normalize_embeddings=True).tolist()
+            )
 
-print("2. Чтение MD файла...")
-with open("output_clean.md", "r", encoding="utf-8") as f:
-    md_text = f.read()
+        collection.add(
+            ids=ids,
+            embeddings=embeddings,
+            documents=[c["text"] for c in chunks],
+            metadatas=metadatas,
+        )
 
-print("3. Разбивка на чанки...")
-chunks = split_with_headers(md_text)
-print(f"   Получено {len(chunks)} чанков")
+        total_chunks += len(chunks)
+        print(f"  ✓ добавлено в коллекцию")
 
-print("4. Сохранение информации о чанках...")
-save_chunks_info(chunks, "chunks_info.txt")
-save_chunks_summary(chunks, "chunks_summary.txt")
+    print(f"\nГотово. Всего чанков в '{collection_name}': {total_chunks}")
 
-print("5. Загрузка модели эмбеддингов...")
-model = SentenceTransformer('all-MiniLM-L6-v2')
 
-print("6. Создание эмбеддингов...")
-embeddings = model.encode(chunks, show_progress_bar=True)
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Индексация MinerU → ChromaDB")
+    parser.add_argument("--input_dir",     required=True, type=Path)
+    parser.add_argument("--chroma_dir",    required=True, type=Path)
+    parser.add_argument("--collection",    default="rag_docs")
+    parser.add_argument("--model",         default=DEFAULT_MODEL)
+    parser.add_argument("--chunk_size",    type=int,
+                        default=DEFAULT_CHUNK_SIZE)
+    parser.add_argument("--chunk_overlap", type=int,
+                        default=DEFAULT_CHUNK_OVERLAP)
+    parser.add_argument("--reset",         action="store_true",
+                        help="Удалить коллекцию перед индексацией")
 
-print("7. Создание постоянного хранилища ChromaDB...")
-client = chromadb.PersistentClient(path="./chroma_db")
+    args = parser.parse_args()
+    index_documents(
+        input_dir=args.input_dir,
+        chroma_dir=args.chroma_dir,
+        collection_name=args.collection,
+        model_name=args.model,
+        chunk_size=args.chunk_size,
+        chunk_overlap=args.chunk_overlap,
+        reset=args.reset,
+    )
 
-try:
-    client.delete_collection("docs")
-    print("   Старая коллекция удалена")
-except:
-    pass
 
-collection = client.create_collection(
-    name="docs",
-    metadata={"hnsw:space": "cosine"}
-)
-
-print("8. Добавление документов в коллекцию...")
-ids = [f"chunk_{i}" for i in range(len(chunks))]
-
-metadatas = []
-for i, chunk in enumerate(chunks):
-    metadata = {
-        "chunk_id": i,
-        "source": "input.docx",
-        "length": len(chunk),
-        "has_headers": bool(re.search(r'#+\s+', chunk)),
-        "has_numbering": bool(re.search(r'\d+\)', chunk)),
-        "has_nested": bool(re.search(r'\(\d+\)', chunk))
-    }
-    metadatas.append(metadata)
-
-collection.add(
-    documents=chunks,
-    embeddings=embeddings.tolist(),
-    ids=ids,
-    metadatas=metadatas
-)
-
-print("\n" + "="*80)
-print("✓ ГОТОВО!")
-print("="*80)
-print(f"   Добавлено {len(chunks)} документов в коллекцию 'docs'")
-print(f"   База данных сохранена в папке ./chroma_db")
-print("\n   СОЗДАННЫЕ ФАЙЛЫ:")
-print(f"   - chunks_info.txt     (подробная информация о каждом чанке)")
-print(f"   - chunks_summary.txt  (краткая сводка по всем чанкам)")
-print(f"   - output.md           (сконвертированный Markdown файл)")
-print("\n   МЕТАДАННЫЕ В CHROMADB:")
-print(f"   - chunk_id: номер чанка")
-print(f"   - source: input.docx")
-print(f"   - length: длина чанка в символах")
-print(f"   - has_headers: наличие заголовков")
-print(f"   - has_numbering: наличие нумерации (1), 2) и т.д.)")
-print(f"   - has_nested: наличие вложенной нумерации ((1), (2) и т.д.)")
-print("="*80)
-
-print("\nСТАТИСТИКА ПО ЧАНКАМ:")
-print(f"  Всего: {len(chunks)}")
-print(f"  С заголовками: {sum(1 for c in chunks if re.search(r'#+\s+', c))}")
-print(f"  С нумерацией: {sum(1 for c in chunks if re.search(r'\d+\)', c))}")
-print(f"  С вложенной нумерацией: {sum(1 for c in chunks if re.search(r'\(\d+\)', c))}")
-print(f"  Средняя длина: {sum(len(c) for c in chunks) // len(chunks)} символов")
-print("="*80)
+if __name__ == "__main__":
+    main()
