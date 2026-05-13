@@ -6,8 +6,8 @@ from app.core.retrieval import retrieve, DocResult
 
 
 OLLAMA_HOST = "http://localhost:11434"
-OLLAMA_MODEL = "gemma2:9b"
-RAG_MIN_SCORE = 0.5
+OLLAMA_MODEL = "gemma2:2b"
+RAG_MIN_SCORE = 0.013
 
 
 _client = ollama.Client(host=OLLAMA_HOST)
