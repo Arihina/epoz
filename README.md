@@ -21,7 +21,10 @@ source venv/bin/activate
 pip3 install -r requirements.txt
 ```
 ```
-python3 create_collection.py
+python3 create_collection.py \
+    --input_dir ./EPoZ_data \
+    --chroma_dir ./chroma_db \
+    --reset
 ```
 ```
 docker compose -d
