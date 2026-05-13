@@ -1,0 +1,2316 @@
+[
+    [
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Приложение № 10"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "к Единому Положению о закупке Государственной корпорации «Ростех»"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Требования к гарантам, гарантии которых принимаются Корпорацией и организациями Корпорации в качестве обеспечения заявки и /или обеспечения исполнения договора, заключаемого Корпорацией или организацией Корпорации по итогам процедуры закупки",
+                        "style": [
+                            "bold"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Настоящее Приложение устанавливает:"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "- требования к банкам, гарантии которых принимаются Корпорацией и организациями Корпорации в качестве обеспечения заявки и/или обеспечения исполнения договора, заключаемого Корпорацией или организацией Корпорации по итогам процедуры закупки (далее – банки-гаранты),"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "- требования к коммерческим организациям, гарантии которых принимаются в качестве обеспечения исполнения договора, заключаемого по итогам процедуры закупки, проводимой в целях исполнения постановления Правительства Российской Федерации от 20.10.2022 г. № 1867, или постановления Правительства Российской Федерации от 23.04.2022 г. № 744, или постановления Правительства Российской Федерации от 09.08.2024 № 1066, или распоряжения Правительства Российской Федерации от 05.06.2024 № 1423-р (далее – гаранты),"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "- методику оценки кредитного риска гарантов, гарантии которой принимаются в качестве обеспечения исполнения договора, заключаемого по итогам процедуры закупки, проводимой в целях исполнения постановления Правительства Российской Федерации от 20.10.2022 г. № 1867, или постановления Правительства Российской Федерации от 23.04.2022 г. № 744, или постановления Правительства Российской Федерации от 09.08.2024 № 1066, или распоряжения Правительства Российской Федерации от 05.06.2024 № 1423-р,"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "- типовую форму независимой гарантии, предоставляемой в качестве обеспечения исполнения договора, заключаемого при осуществлении конкурентной закупки товаров, работ, услуг, проводимой в целях исполнения постановления Правительства Российской Федерации от 20.10.2022 г. № 1867, или постановления Правительства Российской Федерации от 23.04.2022 г. № 744, или постановления Правительства Российской Федерации от 09.08.2024 № 1066, или распоряжения Правительства Российской Федерации от 05.06.2024 № 1423-р."
+                    }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Требования, предъявляемые к банкам-гарантам, являющимся резидентами Российской Федерации:",
+                                "style": [
+                                    "underline"
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Банки-гаранты, являющиеся резидентами Российской Федерации, должны соответствовать совокупности следующих критериев:"
+                    }
+                ],
+                "level": 1
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Наличие действующей лицензии Центрального банка Российской Федерации."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: ",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": "http://www.cbr.ru/banking_sector/otchetnost-kreditnykh-organizaciy/transparent/",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": ")",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Наличие у банка-гаранта кредитного рейтинга не ниже уровня «A-(RU)» по национальной рейтинговой шкале для Российской Федерации, присвоенного кредитным рейтинговым агентством Аналитическое Кредитное Рейтинговое Агентство (Акционерное общество), и/или не ниже уровня «ruA-» по национальной рейтинговой шкале для Российской Федерации, присвоенного кредитным рейтинговым агентством Акционерное общество «Рейтинговое Агентство «Эксперт РА», и/или не ниже уровня «A-|ru|» по национальной рейтинговой шкале для Российской Федерации, присвоенного кредитным рейтинговым агентством Общество с ограниченной ответственностью «Национальное рейтинговое агентство», и/или не ниже уровня «A-.ru» по национальной рейтинговой шкале для Российской Федерации, присвоенного кредитным рейтинговым агентством Общество с ограниченной ответственностью «Национальные кредитные рейтинги» (требование устанавливается на период до 31.12.2026)."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источники информации: ",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "https://www.acra-ratings.ru/ratings/issuers/?sectors[]=banks",
+                        "url": "https://www.acra-ratings.ru/ratings/issuers/?sectors%5b%5d=banks",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": "; ",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "https://raexpert.ru/ratings/bankcredit_all/",
+                        "url": "https://raexpert.ru/ratings/bankcredit_all/",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": "; ",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "https://www.ra-national.ru/",
+                        "url": "https://www.ra-national.ru/",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": "; https://ratings.ru/ratings/press-releases/)",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Публикация отчетности банка на официальном сайте Центрального банка Российской Федерации в информационно-телекоммуникационной сети «Интернет» (требование не применяется до 31.12.2026)."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: ",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "http://www.cbr.ru/banking_sector/otchetnost-kreditnykh-organizaciy/transparent/",
+                        "url": "http://www.cbr.ru/banking_sector/otchetnost-kreditnykh-organizaciy/transparent/",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": ")",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Наличие положительных финансовых результатов деятельности банка на 1 января текущего года не менее, чем за 2 года из 3 лет, предшествующих году объявления процедуры закупки (требование не применяется до 31.12.2026)."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: ",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "http://www.cbr.ru/banking_sector/otchetnost-kreditnykh-organizaciy/transparent/",
+                        "url": "http://www.cbr.ru/banking_sector/otchetnost-kreditnykh-organizaciy/transparent/",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": ", Форма 102 «Отчёт о финансовых результатах» за соответствующий год, стр. 81201)",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Банк включен в перечень банков, удовлетворяющих установленным пунктом 1 части 1 статьи 45 Закона 44-ФЗ требованиям."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации:",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "https://minfin.gov.ru/ru/perfomance/contracts/list_banks/",
+                        "url": "https://minfin.gov.ru/ru/perfomance/contracts/list_banks/",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": " )",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Величина активов на 1 января текущего года по публикуемой отчетности не менее 30 млрд. руб.  (требование не применяется до 31.12.2026)."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: ",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "http://www.cbr.ru/banking_sector/otchetnost-kreditnykh-organizaciy/transparent/",
+                        "url": "http://www.cbr.ru/banking_sector/otchetnost-kreditnykh-organizaciy/transparent/",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": ", Годовая отчетность, Форма «Бухгалтерский баланс», стр. 14)",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Величина собственного капитала на 1 января текущего года по публикуемой отчетности не менее 10 млрд. руб. (требование не применяется до 31.12.2026)."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: ",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "http://www.cbr.ru/banking_sector/otchetnost-kreditnykh-organizaciy/transparent/",
+                        "url": "http://www.cbr.ru/banking_sector/otchetnost-kreditnykh-organizaciy/transparent/",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": ", Форма 123 «Расчёт собственных средств (капитала) («Базель III»)», стр. 000) ",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Совокупный объём обязательств банка по выданным гарантиям (в том числе по аккредитивам) и поручительствам за третьих лиц, предусматривающим исполнение обязательств в денежной форме (в том числе обязательств, вытекающих из акцептов, авалей, индоссаментов) на 1 января текущего года по публикуемой отчетности не превышает двукратной величины собственного капитала на ту же дату (требование не применяется до 31.12.2026)."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: ",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "http://www.cbr.ru/banking_sector/otchetnost-kreditnykh-organizaciy/transparent/",
+                        "url": "http://www.cbr.ru/banking_sector/otchetnost-kreditnykh-organizaciy/transparent/",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": ", Форма 123 «Расчёт собственных средств (капитала) («Базель III»)», стр. 000, Форма 101 «Данные оборотной ведомости по счетам бухгалтерского учёта», стр. 91315)",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Размер обеспечиваемого обязательства (сумма гарантии) по одному договору составляет не более 5 % от величины собственного капитала банка на 1 января текущего года по публикуемой отчетности (требование не применяется до 31.12.2026)."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: ",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "http://www.cbr.ru/banking_sector/otchetnost-kreditnykh-organizaciy/transparent/",
+                        "url": "http://www.cbr.ru/banking_sector/otchetnost-kreditnykh-organizaciy/transparent/",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": ", Форма 123 «Расчёт собственных средств (капитала) («Базель III»)», стр. 000) ",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Совокупный объём выданных Заказчику-бенефициару гарантий не превышает 20 % от величины собственного капитала банка на 1 января текущего года по публикуемой отчетности (требование не применяется до 31.12.2026)."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: ",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "http://www.cbr.ru/banking_sector/otchetnost-kreditnykh-organizaciy/transparent/",
+                        "url": "http://www.cbr.ru/banking_sector/otchetnost-kreditnykh-organizaciy/transparent/",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": ", Форма 123 «Расчёт собственных средств (капитала) («Базель III»)», стр. 000) ",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Наличие офиса (отделение, филиал) в одном с бенефициаром субъекте Российской Федерации или в г. Москве."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: ",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "http://www.cbr.ru/banking_sector/otchetnost-kreditnykh-organizaciy/transparent/",
+                        "url": "http://www.cbr.ru/banking_sector/otchetnost-kreditnykh-organizaciy/transparent/",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": ")",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "В число банков-гарантов, являющихся резидентами Российской Федерации, вне зависимости от соответствия вышеуказанным критериям включаются банки с совокупной долей участия Корпорации и/или организаций Корпорации в уставном капитале такого банка более 50%."
+                    }
+                ],
+                "level": 1
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "В число банков-гарантов включается Государственная корпорация развития «ВЭБ.РФ»."
+                    }
+                ],
+                "level": 1
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "В число банков-гарантов вне зависимости от соответствия вышеуказанным критериям включается банк, определенный в качестве опорного банка для реализации государственного оборонного заказа и сопровождения крупных государственных контрактов для оборонно-промышленного комплекса, в соответствии с Федеральным законом от 29.12.2012 №275-ФЗ «О государственном оборонном заказе»."
+                    }
+                ],
+                "level": 1
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Требования, предъявляемые к банкам-гарантам, являющимся нерезидентами Российской Федерации",
+                                "style": [
+                                    "underline"
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Банки-гаранты, являющиеся нерезидентами Российской Федерации, должны соответствовать совокупности следующих требований:"
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Наличие лицензии уполномоченного органа государства, резидентом которого является банк-гарант, разрешающего выдачу банковских гарантий (далее – «уполномоченный орган»)."
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: интернет-сайт уполномоченного органа)",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Величина собственного капитала на 1 января текущего года по публикуемой отчетности больше или равна 10 млрд. рублей в эквиваленте валюты государства, резидентом которого является Банк-гарант, рассчитанном по курсу Центрального банка Российской Федерации на дату составления отчетности)."
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: интернет-сайт уполномоченного органа) ",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Наличие действующего долгосрочного кредитного рейтинга в иностранной валюте, присвоенного одним из международных рейтинговых агентств – Standard&Poor’s, Moody’s Investors Service, Fitch Ratings, – на уровне не ниже «B-» по шкале Standard&Poor’s и Fitch Ratings, не ниже «B3» по шкале Moody’s Investors Service. Указанные рейтинги должны быть действительными и не могут находиться в состоянии «отозван» или «приостановлен»."
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: интернет-сайты рейтинговых агентств ",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "www",
+                        "url": "http://www.standardandpoors.com",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": ".",
+                        "url": "http://www.standardandpoors.com",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "standardandpoors",
+                        "url": "http://www.standardandpoors.com",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": ".",
+                        "url": "http://www.standardandpoors.com",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "com",
+                        "url": "http://www.standardandpoors.com",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": ",  ",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "www",
+                        "url": "http://www.moodys.com",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": ".",
+                        "url": "http://www.moodys.com",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "moodys",
+                        "url": "http://www.moodys.com",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": ".",
+                        "url": "http://www.moodys.com",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "com",
+                        "url": "http://www.moodys.com",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": ", ",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "www",
+                        "url": "http://www.fitchratings.com",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": ".",
+                        "url": "http://www.fitchratings.com",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "fitchratings",
+                        "url": "http://www.fitchratings.com",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": ".",
+                        "url": "http://www.fitchratings.com",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "com",
+                        "url": "http://www.fitchratings.com",
+                        "style": [
+                            "italic",
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": ", либо указанные сайты с соответствующим расширением доменного имени в государстве, резидентом которого является банк)",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "При отсутствии кредитного рейтинга, присвоенного одним из трех международных рейтинговых агентств Standard&Poor’s, Moody’s Investors Service, Fitch Ratings банк должен входить в первую тройку банков страны (по критерию величины активов), резидентом которой он является."
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: интернет-сайт уполномоченного органа)",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Размер обеспечиваемого обязательства (сумма гарантии) по одному договору должен составляет не более 5 % от величины собственного капитала банка на 1 января текущего года по публикуемой отчетности."
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: интернет-сайт уполномоченного органа)",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Настоящее приложение не применяется при проведении закупок, участниками которых могут быть только субъекты МСП.",
+                                "style": [
+                                    "underline"
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Требования к гарантам, гарантии которых принимаются в качестве обеспечения исполнения договора, заключаемого по итогам процедуры закупки, проводимой в целях исполнения постановления Правительства Российской Федерации от 20.10.2022 г. № 1867, или постановления Правительства Российской Федерации от 23.04.2022 г. № 744, или постановления Правительства Российской Федерации от 09.08.2024 № 1066, или распоряжения Правительства Российской Федерации от 05.06.2024 № 1423-р.",
+                                "style": [
+                                    "underline"
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Гаранты должны соответствовать совокупности следующих критериев:"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Организация является резидентом Российской Федерации."
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: выписка из ЕГРЮЛ)",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Организация не находится на дату объявления процедуры закупки в состоянии банкротства и/или в процессе ликвидации и/или реорганизации."
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: выписка из ЕГРЮЛ)",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Организация не является финансовой организацией по смыслу ст. 4 Закона 135-ФЗ."
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: https://www.cbr.ru/finorg/)",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Соответствие одному из следующих критериев:"
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(а) наличие у организации кредитного рейтинга не ниже уровня «A-(RU)» по национальной рейтинговой шкале для Российской Федерации, присвоенного кредитным рейтинговым агентством Аналитическое Кредитное Рейтинговое Агентство (Акционерное общество), и/или не ниже уровня «ruA-» по национальной рейтинговой шкале для Российской Федерации, присвоенного кредитным рейтинговым агентством Акционерное общество «Рейтинговое Агентство «Эксперт РА»."
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источники информации: ",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "https://www.acra-ratings.ru/",
+                        "url": "https://www.acra-ratings.ru/ratings/issuers/?sectors%5b%5d=banks",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": "; ",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "https://raexpert.ru/",
+                        "url": "https://raexpert.ru/ratings/bankcredit_all/",
+                        "style": [
+                            "italic"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": ")",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(б) уровень кредитного риска организации, рассчитанный в соответствии с требованиями Методики оценки кредитного рейтинга, относится к категории «Низкий» или «Средний»."
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источники информации: расчет уровня кредитного риска, проведенный в соответствии с требованиями Методики оценки кредитного риска, официальная бухгалтерская (финансовая) отчетность гаранта (форма по ОКУД 0710001, форма по ОКУД 0710002) за последний отчетный квартал, предшествующий кварталу проведения закупки и за аналогичный период года, предшествующего отчетному)",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Совокупный объём обязательств гаранта по выданным независимым гарантиям, поручительствам за третьих лиц и авалированным векселям третьих лиц, предусматривающим исполнение обязательств в денежной форме на 1 января текущего года, не превышает величины ликвидных активов гаранта (сумма денежных средств на счетах и эквивалентов и краткосрочной дебиторской задолженности) на ту же дату."
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: годовая бухгалтерская (финансовая) отчетность гаранта (форма по ОКУД 0710001 сумма строк код 1250 и код 1230 за вычетом строки код 12307, форма по ОКУД 0710005 код 5700))",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Размер обеспечиваемого обязательства (сумма независимой гарантии) по одному договору составляет не более 5% от величины ликвидных активов гаранта на 1 января текущего года."
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: годовая бухгалтерская (финансовая) отчетность гаранта (форма по ОКУД 0710001 сумма строк код 1250 и код 1230 за вычетом строки код 12307))",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Совокупный объём выданных гарантом заказчику-бенефициару независимых гарантий и поручительств, авалированных гарантом векселей заказчика-бенефициара не превышает 20% от величины ликвидных активов гаранта на 1 января текущего года."
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "(источник информации: справка гаранта, подписанная уполномоченным лицом, годовая бухгалтерская (финансовая) отчетность гаранта (форма по ОКУД 0710001 сумма строк код  и код 1230 за вычетом строки код 12307))",
+                        "style": [
+                            "italic"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Методика оценки кредитного риска гаранта, гарантии которого принимаются в качестве обеспечения исполнения договора, заключаемого по итогам процедуры закупки, проводимой в целях исполнения постановления Правительства Российской Федерации от 20.10.2022 г. \n№ 1867, или постановления Правительства Российской Федерации от 23.04.2022 г. № 744, или постановления Правительства Российской Федерации от 09.08.2024 № 1066, или распоряжения Правительства Российской Федерации от 05.06.2024 № 1423-р.",
+                                "style": [
+                                    "underline"
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Оценка риска проводится на основании финансовой (бухгалтерской) отчетности (Бухгалтерский баланс (форма по ОКУД 0710001), Отчет о финансовых результатах (форма по ОКУД 0710002)) гаранта за последний отчетный квартал, предшествующий кварталу проведения закупки и за аналогичный период года, предшествующего отчетному. "
+                    }
+                ],
+                "level": 1
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Отчетность должна быть представлена гарантом любым (любыми) из следующих способов:"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "на бумажном носителе, заверенная органом Федеральной налоговой службы по местонахождению Гаранта;"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "в виде электронного документа, подписанного усиленной квалифицированной электронной подписью ФНС России, со ссылкой на его размещение на Государственном информационном ресурсе финансовой (бухгалтерской) отчетности в телекоммуникационной сети Интернет по адресу "
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "https://bo.nalog.ru/",
+                        "url": "https://bo.nalog.ru/",
+                        "style": [
+                            "underline"
+                        ]
+                    },
+                    {
+                        "type": "text",
+                        "content": ";"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "в электронном виде со ссылкой на ее размещение на официальном сайте гаранта в телекоммуникационной сети Интернет;"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "в электронном виде со ссылкой на ее размещение в информационных системах, позволяющих осуществить доступ к отчетности гаранта (типа «СПАРК»);"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "в электронном виде по форме КНД 0710099 (Бухгалтерский баланс (форма по ОКУД 0710001), Отчет о финансовых результатах (форма по ОКУД 0710002)), по форме КНД 0710096 (в случае формирования отчетности по упрощенной форме), в случае формирования в Программном комплексе «Налогоплательщик ЮЛ» в соответствии с требованиями Порядка представления налоговой и бухгалтерской отчетности в электронном виде через Интернет-сайт ФНС России, либо в электронном виде в машиночитаемой форме формата .xml / excel, с квитанцией о приеме декларации в электронном виде и протоколом входного контроля ФНС России (только для годовой отчетности)."
+                    }
+                ]
+            },
+            "anchor": "_Hlk130814910"
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "На основании указанных в п. 1 документов (данных), заполняется "
+                    },
+                    {
+                        "type": "hyperlink",
+                        "content": "Таблица 1",
+                        "url": "file:///\\\\rti.lan\\dfs\\DATA-Z\\OU-SUZD\\ЕПОЗ\\ЕПОЗ_ВСЕ%20ВЕРСИИ\\25_ЕПОЗ%20изменения%20в%202023\\Предложения_независимая%20гарантия.docx"
+                    },
+                    {
+                        "type": "text",
+                        "content": " (в соответствующих единицах измерения) по данным бухгалтерской отчетности (форма по ОКУД 0710001, форма по ОКУД 0710002)."
+                    }
+                ],
+                "level": 1
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Таблица 1. Форма данных для оценки кредитного риска"
+                    }
+                ]
+            },
+            "anchor": "P21"
+        },
+        {
+            "type": "table",
+            "content": {
+                "table_caption": [],
+                "html": "<table><tr><td colspan=\"3\"><p>Показатели финансово-хозяйственной деятельности</p></td></tr><tr><td><p>Бухгалтерский баланс (форма по ОКУД 0710001)</p></td><td><p>Код сроки отчетности</p></td><td><p>Значение</p></td></tr><tr><td><p>Итого по разделу I, тыс. руб.</p></td><td><p>1100</p></td><td></td></tr><tr><td><p>Итого по разделу II, тыс. руб.</p></td><td><p>1200</p></td><td></td></tr><tr><td><p>Налог на добавленную стоимость по приобретенным ценностям</p></td><td><p>1220</p></td><td></td></tr><tr><td><p>Финансовые вложения (за исключением денежных эквивалентов), тыс. руб.</p></td><td><p>1240</p></td><td></td></tr><tr><td><p>Денежные средства и денежные эквиваленты, тыс. руб.</p></td><td><p>1250</p></td><td></td></tr><tr><td><p>Итого по разделу III, тыс. руб.</p></td><td><p>1300</p></td><td></td></tr><tr><td><p>Итого по разделу IV, тыс. руб.</p></td><td><p>1400</p></td><td></td></tr><tr><td><p>Заемные средства, тыс. руб.</p></td><td><p>1510</p></td><td></td></tr><tr><td><p>Кредиторская задолженность, тыс. руб.</p></td><td><p>1520</p></td><td></td></tr><tr><td><p>Прочие обязательства, тыс. руб.</p></td><td><p>1550</p></td><td></td></tr><tr><td><p>БАЛАНС (актив/пассив)</p></td><td><p>1600 / 1700</p></td><td></td></tr><tr><td><p>Отчет о финансовых результатах (форма по ОКУД 0710002)</p></td><td></td><td></td></tr><tr><td><p>Чистая прибыль (убыток) за анализируемый отчетный период, тыс. руб.<sup><sup><a>[1]</a></sup></sup></p></td><td><p>2400</p></td><td></td></tr><tr><td><p>Чистая прибыль (убыток) за аналогичный отчетный период года, предшествующего анализируемому, тыс. руб.</p></td><td><p>2400</p></td><td></td></tr></table>",
+                "table_type": "complex_table",
+                "table_nest_level": 1
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Расчет коэффициентов, характеризующих финансовое состояние гаранта."
+                    }
+                ],
+                "level": 1
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "На основании данных отчетности рассчитываются коэффициенты, характеризующие финансовое состояние гаранта."
+                    }
+                ]
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Коэффициент обеспечения собственными оборотными средствами."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Рассчитывается на основании данных бухгалтерской отчетности (форма по ОКУД 0710001) по формуле:"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "table",
+            "content": {
+                "table_caption": [],
+                "html": "<table><tr><td rowspan=\"2\"><p>К1 =</p></td><td><p>(код 1300 - код 1100)</p></td></tr><tr><td><p>код 1200</p></td></tr></table>",
+                "table_type": "complex_table",
+                "table_nest_level": 1
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Коэффициент обеспеченности обязательств всеми активами. "
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Рассчитывается на основании данных бухгалтерской отчетности (форма по ОКУД 0710001) по формуле:"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "table",
+            "content": {
+                "table_caption": [],
+                "html": "<table><tr><td rowspan=\"2\"><p>К2 =</p></td><td><p>(код 1600 - код 1220)</p></td></tr><tr><td><p>(код 1520 + код 1510 + код 1550 + код 1400)</p></td></tr></table>",
+                "table_type": "complex_table",
+                "table_nest_level": 1
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Коэффициент финансовой независимости."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Рассчитывается на основании данных бухгалтерской отчетности (форма по ОКУД 0710001) по формуле:"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "table",
+            "content": {
+                "table_caption": [],
+                "html": "<table><tr><td rowspan=\"2\"><p>К3 =</p></td><td><p>код 1300</p></td></tr><tr><td><p>код 1700</p></td></tr></table>",
+                "table_type": "complex_table",
+                "table_nest_level": 1
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Коэффициент текущей ликвидности."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Рассчитывается на основании данных бухгалтерской отчетности (форма по ОКУД 0710001) по формуле:"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "table",
+            "content": {
+                "table_caption": [],
+                "html": "<table><tr><td rowspan=\"2\"><p>К4 =</p></td><td><p>код 1200</p></td></tr><tr><td><p>код 1510 + код 1520 + код 1550</p></td></tr></table>",
+                "table_type": "complex_table",
+                "table_nest_level": 1
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": " Коэффициент абсолютной ликвидности."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Рассчитывается на основании данных бухгалтерской отчетности (форма по ОКУД 0710001) по формуле:"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "table",
+            "content": {
+                "table_caption": [],
+                "html": "<table><tr><td rowspan=\"2\"><p>К5 =</p></td><td><p>(код 1250 + код 1240)</p></td></tr><tr><td><p>(код 1510 + код 1520 + код 1550)</p></td></tr></table>",
+                "table_type": "complex_table",
+                "table_nest_level": 1
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Финансовый результат за 2 отчетных периода."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Определяется путем сравнения показателей по коду 2400 на основании данных бухгалтерской отчетности (форма № 2) за анализируемый отчетный период и аналогичный отчетный период года, предшествующего анализируемому."
+                    }
+                ]
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": " Коэффициент рентабельности собственного капитала."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Рассчитывается на основании данных бухгалтерской отчетности (форма по ОКУД 0710001, форма по ОКУД 0710002) по формуле:"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "table",
+            "content": {
+                "table_caption": [],
+                "html": "<table><tr><td rowspan=\"2\"><p>К7 =</p></td><td><p>Код 2400</p></td></tr><tr><td><p>Код 1300</p></td></tr></table>",
+                "table_type": "complex_table",
+                "table_nest_level": 1
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Определение итогового показателя кредитного риска Гаранта"
+                    }
+                ],
+                "level": 1
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Каждому показателю в зависимости от его значения присваивается балл от 1 до 5 согласно Таблице 2."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Таблица 2. Балльная оценка показателей"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "table",
+            "content": {
+                "table_caption": [],
+                "html": "<table><thead><tr><th rowspan=\"2\"><p>Показатель</p></th><th colspan=\"5\"><p>Балл, соответствующий значению показателя</p></th></tr><tr><th><p>5</p></th><th><p>4</p></th><th><p>3</p></th><th><p>2</p></th><th><p>1</p></th></tr></thead><tbody><tr><td colspan=\"6\"><p>Показатели финансово-хозяйственной деятельности и диапазоны их значений</p></td></tr><tr><td><p>Коэффициент обеспеченности собственными оборотными средствами (К1), %</p></td><td><p>&lt;= 0%</p></td><td><p>(0%;10%]</p></td><td><p>(10%;20%]</p></td><td><p>(20%;30%]</p></td><td><p>&gt; 30%</p></td></tr><tr><td><p>Коэффициент обеспеченности обязательств всеми активами (К2), %</p></td><td><p>&lt;= 100%</p></td><td><p>(100%;120%]</p></td><td><p>(120%;140%]</p></td><td><p>(140%;160%]</p></td><td><p>&gt; 160%</p></td></tr><tr><td><p>Коэффициент финансовой независимости (К3), %</p></td><td><p>&lt;= 20%</p></td><td><p>(20%;30%]</p></td><td><p>(30%;40%]</p></td><td><p>(40%;50%]</p></td><td><p>&gt; 50%</p></td></tr><tr><td><p>Коэффициент текущей ликвидности (К4), %</p></td><td><p>&lt;= 50%</p></td><td><p>(50%;70%]</p></td><td><p>(70%;90%]</p></td><td><p>(100%;110%]</p></td><td><p>&gt; 110%</p></td></tr><tr><td><p>Коэффициент абсолютной ликвидности (К5), %</p></td><td><p>&lt;= 10%</p></td><td><p>(10%;20%]</p></td><td><p>(20%;30%]</p></td><td><p>(30%;50%]</p></td><td><p>&gt; 50%</p></td></tr><tr><td><p>Финансовый результат за анализируемый отчетный период и аналогичный отчетный период года, предшествующего анализируемому (К6)</p></td><td><p>2 периода из 2-х убыток</p></td><td><p>анализируемый отчетный период – убыток, предыдущий отчетный период – прибыль</p></td><td><p>анализируемый отчетный период – прибыль, предыдущий отчетный период – убыток</p></td><td><p>2 периода из 2-х прибыль, прибыль снижается</p></td><td><p>2 периода из 2-х прибыль, прибыль растет</p></td></tr><tr><td><p>Коэффициент рентабельности собственного капитала (К7), %</p></td><td><p>&lt;= 0%</p></td><td><p>(0%;4%]</p></td><td><p>(4%;10%]</p></td><td><p>(10%;20%]</p></td><td><p>&gt; 20%</p></td></tr></tbody></table>",
+                "table_type": "complex_table",
+                "table_nest_level": 1
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Фактическое значение каждого показателя, а также соответствующий ему балл заносятся в столбцы «Значение показателя», «Балл показателя» Таблицы 3 соответственно."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Таблица 3. Расчет итогового показателя кредитного риска"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "table",
+            "content": {
+                "table_caption": [],
+                "html": "<table><tr><td><p>Параметры оценки</p></td><td><p>Вес показателя</p></td><td><p>Значение показателя</p></td><td><p>Балл показателя</p></td><td><p>Итоговый</p><p>балл</p></td></tr><tr><td><p>Коэффициент обеспеченности собственными оборотными средствами (К1), %</p></td><td><p>15%</p></td><td></td><td></td><td></td></tr><tr><td><p>Коэффициент обеспеченности обязательств всеми активами (К2), %</p></td><td><p>15%</p></td><td></td><td></td><td></td></tr><tr><td><p>Коэффициент финансовой независимости (К3), %</p></td><td><p>15%</p></td><td></td><td></td><td></td></tr><tr><td><p>Коэффициент текущей ликвидности (К4), %</p></td><td><p>15%</p></td><td></td><td></td><td></td></tr><tr><td><p>Коэффициент абсолютной ликвидности (К5), %</p></td><td><p>15%</p></td><td></td><td></td><td></td></tr><tr><td><p>Финансовый результат за анализируемый отчетный период и аналогичный отчетный период года, предшествующего анализируемому (К6)</p></td><td><p>15%</p></td><td></td><td></td><td></td></tr><tr><td><p>Коэффициент рентабельности собственного капитала (К7), %</p></td><td><p>10%</p></td><td></td><td></td><td></td></tr><tr><td><p>Итоговый показатель риска</p></td><td><p>100%</p></td><td></td><td></td><td></td></tr></table>",
+                "table_type": "simple_table",
+                "table_nest_level": 1
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "В столбце «Итоговый балл» Таблицы 3 указывается балльное значение показателя с учетом его веса, определяемое по формуле:"
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "table",
+            "content": {
+                "table_caption": [],
+                "html": "<table><tr><td><p>Итоговый балл показателя =</p></td><td><p>Вес показателя х Балл показателя</p></td></tr></table>",
+                "table_type": "simple_table",
+                "table_nest_level": 1
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Итоговый балльный показатель величины риска рассчитывается путем суммирования рассчитанных в соответствии с п. 4.3 итоговых баллов каждого показателя:"
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "table",
+            "content": {
+                "table_caption": [],
+                "html": "<table><tr><td><p>Итоговый показатель риска =</p></td><td><p><img alt=\"base_52268_9832_32846\" src=\"images/3ebbb27950010019e419706998f0daf89875233cabfce4d2a9330a08f2223133.x-wmf\"/> Вес показателя х Балл показателя</p></td></tr></table>",
+                "table_type": "simple_table",
+                "table_nest_level": 1
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Итоговый показатель указывается в нижнем правом поле Таблицы 3."
+                    }
+                ],
+                "level": 2
+            }
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Характеристика кредитного риска гаранта"
+                    }
+                ],
+                "level": 1
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Итоговый показатель принимает значение в диапазоне от 1 до 5 баллов, что соответствует определенному уровню кредитного риска гаранта (Таблица 4)."
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Таблица 4. Вероятность реализации риска"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "table",
+            "content": {
+                "table_caption": [],
+                "html": "<table><tr><td><p>Балльное значение показателя</p></td><td><p>Словесная характеристика уровня кредитного риска</p></td></tr><tr><td><p>1 &lt;= показатель &lt; 2</p></td><td><p>Низкий</p></td></tr><tr><td><p>2 &lt;= показатель &lt; 3</p></td><td><p>Средний</p></td></tr><tr><td><p>3 &lt;= показатель &lt; 4</p></td><td><p>Высокий</p></td></tr><tr><td><p>4 &lt;= показатель &lt;= 5</p></td><td><p>Очень высокий</p></td></tr></table>",
+                "table_type": "simple_table",
+                "table_nest_level": 1
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Типовая форма независимой гарантии, предоставляемой в качестве обеспечения исполнения договора, заключаемого при осуществлении конкурентной закупки товаров, работ, услуг, проводимой в целях исполнения постановления Правительства Российской Федерации от 20.10.2022 г. № 1867, или постановления Правительства Российской Федерации от 23.04.2022 г. № 744, или постановления Правительства Российской Федерации от 09.08.2024 № 1066, или распоряжения Правительства Российской Федерации от 05.06.2024 № 1423-р.",
+                                "style": [
+                                    "underline"
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "table",
+            "content": {
+                "table_caption": [],
+                "html": "<table><tr><td></td><td colspan=\"2\"><p>Дата выдачи</p></td><td></td></tr><tr><td></td><td colspan=\"2\"><p>Номер независимой гарантии &lt;1&gt;</p></td><td></td></tr><tr><td colspan=\"4\"><p>Информация о гаранте, принципале, бенефициаре</p></td></tr><tr><td></td><td></td><td></td><td><p>Коды</p></td></tr><tr><td><p>Полное наименование гаранта</p></td><td></td><td><p>ИНН</p></td><td></td></tr><tr><td></td><td></td><td><p>КПП</p></td><td></td></tr><tr><td><p>Идентификационный код гаранта</p></td><td></td><td></td><td><p>-</p></td></tr><tr><td><p>Место нахождения, телефон, адрес электронной почты гаранта</p></td><td></td><td><p>по ОКТМО &lt;1&gt;</p></td><td></td></tr><tr><td></td><td></td><td></td><td></td></tr><tr><td><p>Полное наименование принципала</p></td><td></td><td><p>ИНН &lt;2&gt;</p></td><td></td></tr><tr><td></td><td></td><td><p>КПП &lt;3&gt;</p></td><td></td></tr><tr><td><p>Место нахождения, телефон, адрес электронной почты принципала</p></td><td></td><td><p>по <a>ОКТМО</a> &lt;1&gt;</p></td><td></td></tr><tr><td rowspan=\"2\"><p>Полное наименование бенефициара</p></td><td rowspan=\"2\"></td><td><p>ИНН</p></td><td></td></tr><tr><td><p>КПП</p></td><td></td></tr><tr><td><p>Место нахождения, телефон, адрес электронной почты бенефициара</p></td><td></td><td><p>по ОКТМО</p></td><td></td></tr></table>",
+                "table_type": "complex_table",
+                "table_nest_level": 1
+            }
+        },
+        {
+            "type": "table",
+            "content": {
+                "table_caption": [],
+                "html": "<table><tr><td colspan=\"4\"><p>Информация о конкурентной закупке, для обеспечения заявки на участие в которой предоставляется независимая гарантия</p></td></tr><tr><td><p>Номер извещения об осуществлении конкурентной закупки &lt;1&gt;</p></td><td></td><td></td><td></td></tr><tr><td><p>Предмет договора &lt;4&gt;</p></td><td></td><td></td><td></td></tr><tr><td colspan=\"4\"><p>Условия независимой гарантии</p></td></tr><tr><td><p>Сумма независимой гарантии, подлежащая уплате гарантом бенефициару (далее - сумма независимой гарантии)</p></td><td></td><td></td><td></td></tr><tr><td><p>Наименование валюты</p></td><td></td><td><p>по ОКВ</p></td><td></td></tr><tr><td><p>Срок вступления независимой гарантии в силу &lt;5&gt;</p></td><td></td><td></td><td></td></tr><tr><td><p>Срок действия независимой гарантии &lt;5&gt;</p></td><td></td><td></td><td></td></tr></table>",
+                "table_type": "complex_table",
+                "table_nest_level": 1
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Настоящая независимая гарантия обеспечивает исполнение принципалом его обязательств, предусмотренных договором, заключенным (заключаемым) с бенефициаром, включающих в том числе обязательства принципала по уплате неустоек (штрафов, пеней)."
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "2.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Настоящая независимая гарантия не может быть отозвана гарантом."
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "3.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Бенефициар в случае неисполнения или ненадлежащего исполнения принципалом обязательств, обеспеченных настоящей независимой гарантией, вправе до окончания ее срока действия предъявить требование об уплате денежной суммы по независимой гарантии (далее – требование) в размере цены договора, уменьшенном на сумму, пропорциональную объему исполненных принципалом обязательств, предусмотренных договором, в отношении которых бенефициаром осуществлена приемка, но не превышающем размер обеспечения исполнения договора и сумму независимой гарантии."
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "4.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Бенефициар вправе направить гаранту требование в письменной форме на бумажном носителе или в форме электронного документа, подписанного усиленной квалифицированной электронной подписью лица, имеющего право действовать от имени бенефициара."
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "5.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Требование в письменной форме на бумажном носителе должно быть направлено (в случае если бенефициар направляет требование гаранту в письменной форме на бумажном носителе) по адресу: ________________ <6>."
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "6.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Требование в форме электронного документа должно быть направлено (в случае если бенефициар направляет требование гаранту в форме электронного документа) ________________ <7>."
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "7.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "В случае направления требования бенефициар обязан одновременно с таким требованием направить гаранту:"
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "а) расчет суммы, включаемой в требование по настоящей независимой гарантии;"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "б) документ, содержащий указание на нарушения принципалом обязательств, предусмотренных договором;"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "в) документ, подтверждающий полномочия лица, подписавшего требование по настоящей независимой гарантии от имени бенефициара (доверенность) (в случае если требование по настоящей независимой гарантии подписано лицом, не указанным в Едином государственном реестре юридических лиц в качестве лица, имеющего право без доверенности действовать от имени бенефициара)."
+                    }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "attribute": "ordered",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "1.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "В случае направления требования бенефициаром на бумажном носителе представляются оригиналы предусмотренных пунктом 7 настоящей независимой гарантии документов или заверенные бенефициаром их копии. Если копия документа заверена лицом, не указанным в Едином государственном реестре юридических лиц в качестве лица, имеющего право без доверенности действовать от имени бенефициара, также представляется документ, подтверждающий полномочия такого лица на осуществление действий от имени бенефициара. В случае направления требования в форме электронного документа предусмотренные пунктом 7 настоящей независимой гарантии документы представляются в форме электронных документов или в форме электронных образов бумажных документов, подписанных усиленной квалифицированной электронной подписью лица, имеющего право действовать от имени бенефициара."
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "2.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Гарант обязан рассмотреть требование не позднее 5 рабочих дней со дня, следующего за днем получения указанного требования и документов, предусмотренных пунктом 7 настоящей независимой гарантии."
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "3.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Гарант обязан уплатить бенефициару денежную сумму по настоящей независимой гарантии в размере, указанном в требовании, не позднее 10 рабочих дней со дня, следующего за днем получения гарантом требования бенефициара, соответствующего условиям настоящей независимой гарантии, при отсутствии предусмотренных Гражданским кодексом Российской Федерации оснований для отказа в удовлетворении этого требования."
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "4.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Обязательство гаранта перед бенефициаром считается исполненным надлежащим образом со дня поступления денежных сумм по настоящей независимой гарантии на счет, на котором в соответствии с законодательством Российской Федерации учитываются операции со средствами, поступающими бенефициару, указанный бенефициаром в требовании."
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "5.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Гарант в случае просрочки исполнения обязательств по настоящей независимой гарантии, требование по которой соответствует условиям настоящей независимой гарантии и предъявлено бенефициаром до окончания срока ее действия, обязан за каждый день просрочки (начиная со дня, следующего за днем истечения установленного настоящей независимой гарантией срока оплаты требования, по день исполнения гарантом требования включительно) уплатить бенефициару неустойку (пени) в размере 0,1 процента денежной суммы, подлежащей уплате по настоящей независимой гарантии."
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "6.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Все расходы, возникающие в связи с перечислением гарантом денежных средств по настоящей независимой гарантии бенефициару, несет гарант."
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "7.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Споры, возникающие в связи с исполнением обязательств по настоящей независимой гарантии, подлежат рассмотрению в арбитражном суде ________________ <8>."
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "ilevel": 0,
+                        "prefix": "8.",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "Настоящая независимая гарантия выдана в пользу бенефициара, и права требования по ней не могут быть переданы третьему лицу без согласия гаранта, за исключением случая перемены заказчика при осуществлении закупки, при котором право требования по независимой гарантии может быть передано новому заказчику с предварительным извещением об этом гаранта."
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "type": "table",
+            "content": {
+                "table_caption": [],
+                "html": "<table><tr><td><p>Уполномоченное лицо Гаранта</p></td><td colspan=\"2\"></td><td></td><td></td><td></td><td colspan=\"2\"></td><td></td></tr><tr><td></td><td colspan=\"2\"></td><td><p>(должность)</p></td><td></td><td><p>(подпись)</p></td><td colspan=\"2\"></td><td><p>(расшифровка подписи)</p></td></tr><tr><td colspan=\"2\"><p>«__» _________ 20__ г.</p></td><td colspan=\"7\"></td></tr><tr><td colspan=\"2\"></td><td colspan=\"5\"><p>Лист N</p></td><td colspan=\"2\"></td></tr><tr><td colspan=\"2\"></td><td colspan=\"5\"><p>Всего листов</p></td><td colspan=\"2\"></td></tr></table>",
+                "table_type": "complex_table",
+                "table_nest_level": 1
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "--------------------------------"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "<1> Указывается при наличии."
+                    }
+                ]
+            },
+            "anchor": "P526"
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "<2> В случае отсутствия у иностранного лица идентификационного номера налогоплательщика, присвоенного в соответствии с законодательством Российской Федерации о налогах и сборах, указывается аналог идентификационного номера налогоплательщика в соответствии с законодательством иностранного государства."
+                    }
+                ]
+            },
+            "anchor": "P527"
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "<3> Указывается, если принципал является юридическим лицом, аккредитованным филиалом или представительством иностранного юридического лица."
+                    }
+                ]
+            },
+            "anchor": "P528"
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "<4> Указывается в соответствии с извещением об осуществлении конкурентной закупки."
+                    }
+                ]
+            },
+            "anchor": "P529"
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "<5> Указывается срок, определяемый календарной датой или истечением периода времени, который исчисляется годами, месяцами, неделями, днями или часами. Такой срок может определяться также указанием на событие. Указываемый срок действия независимой гарантии должен превышать предусмотренный договором срок исполнения основного обязательства, которое должно быть обеспечено такой независимой гарантией, не менее чем на один месяц, в том числе в случае его изменения."
+                    }
+                ]
+            },
+            "anchor": "P530"
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "<6> Указывается почтовый адрес."
+                    }
+                ]
+            },
+            "anchor": "P531"
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "<7> Указываются адрес электронной почты и/или наименование информационной системы."
+                    }
+                ]
+            },
+            "anchor": "P532"
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "<8> Указывается наименование арбитражного суда."
+                    }
+                ]
+            },
+            "anchor": "P533"
+        }
+    ]
+]
