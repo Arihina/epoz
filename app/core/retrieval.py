@@ -8,14 +8,19 @@ import chromadb
 
 
 CHROMA_PATH = "./chroma_db"
-CHROMA_COLLECTION = "rag_docs"
-EMBED_MODEL = "all-MiniLM-L6-v2"
+CHROMA_COLLECTION = "rag_docs_hybrid"
+EMBED_MODEL = "intfloat/multilingual-e5-small"
+
 QUERY_PREFIX = "query: "
 
-RETRIEVAL_THRESHOLD = 0.1
-RETRIEVAL_TOP_K = 3
+RETRIEVAL_THRESHOLD = 0.35
+RETRIEVAL_TOP_K = 5
 
 RRF_K = 60
+
+DEDUP_THRESHOLD = 0.92
+
+JSON_SCORE_BOOST = 0.02
 
 embed_model = SentenceTransformer(EMBED_MODEL)
 chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
@@ -57,6 +62,7 @@ def _init_bm25() -> None:
 _init_bm25()
 
 
+# {"text": str, "source": str, "chunk_id": int|str, "score": float}
 type DocResult = dict
 
 
@@ -64,7 +70,34 @@ def _doc_key(meta: dict, fallback_idx: int) -> tuple:
     return (
         meta.get("source", "unknown"),
         meta.get("anchor") or meta.get("chunk_id") or str(fallback_idx),
+        meta.get("source_format", ""),
     )
+
+
+def _deduplicate(results: list[DocResult]) -> list[DocResult]:
+    if len(results) <= 1:
+        return results
+
+    def _similarity(a: str, b: str) -> float:
+        sa, sb = set(_tokenize(a)), set(_tokenize(b))
+        if not sa and not sb:
+            return 1.0
+        return len(sa & sb) / len(sa | sb)
+
+    kept: list[DocResult] = []
+    for candidate in results:
+        is_dup = False
+        for existing in kept:
+            if candidate["source"] != existing["source"]:
+                continue
+            sim = _similarity(candidate["text"], existing["text"])
+            if sim >= DEDUP_THRESHOLD:
+                is_dup = True
+                break
+        if not is_dup:
+            kept.append(candidate)
+
+    return kept
 
 
 def _bm25_search(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
@@ -81,11 +114,12 @@ def _bm25_search(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
             continue
         meta = metadatas[idx] if idx < len(metadatas) else {}
         results.append({
-            "text":     documents[idx],
-            "source":   meta.get("source", "unknown"),
-            "chunk_id": _doc_key(meta, int(idx)),
-            "score":    score,
-            "_meta":    meta,
+            "text":          documents[idx],
+            "source":        meta.get("source", "unknown"),
+            "chunk_id":      _doc_key(meta, int(idx)),
+            "score":         score,
+            "source_format": meta.get("source_format", ""),
+            "_meta":         meta,
         })
     return results
 
@@ -93,14 +127,14 @@ def _bm25_search(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
 def _vector_search(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
     try:
         embedding = embed_model.encode(
-            [QUERY_PREFIX + query],
+            [QUERY_PREFIX + query] if QUERY_PREFIX else [query],
             convert_to_numpy=True,
             normalize_embeddings=True,
         )[0].tolist()
 
         raw = collection.query(
             query_embeddings=[embedding],
-            n_results=top_k,
+            n_results=top_k * 2,
             include=["documents", "metadatas", "distances"],
         )
 
@@ -113,11 +147,12 @@ def _vector_search(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
                 meta = (raw["metadatas"][0][i] or {}
                         ) if raw["metadatas"] else {}
                 results.append({
-                    "text":     doc,
-                    "source":   meta.get("source", "unknown"),
-                    "chunk_id": _doc_key(meta, i),
-                    "score":    score,
-                    "_meta":    meta,
+                    "text":          doc,
+                    "source":        meta.get("source", "unknown"),
+                    "chunk_id":      _doc_key(meta, i),
+                    "score":         score,
+                    "source_format": meta.get("source_format", ""),
+                    "_meta":         meta,
                 })
         return results
 
@@ -147,16 +182,21 @@ def _rrf_merge(
             merged[key] = {**r, "score": 0.0}
         merged[key]["score"] += rrf
 
-    ranked = sorted(merged.values(), key=lambda x: x["score"], reverse=True)[
-        :top_k]
+    for r in merged.values():
+        if r.get("source_format") == "json":
+            r["score"] += JSON_SCORE_BOOST
 
-    for r in ranked:
+    ranked = sorted(merged.values(), key=lambda x: x["score"], reverse=True)
+
+    deduped = _deduplicate(ranked)
+
+    for r in deduped:
         r.pop("_meta", None)
 
-    return ranked
+    return deduped[:top_k]
 
 
 def retrieve(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
-    vector = _vector_search(query, top_k)
-    bm25_ = _bm25_search(query, top_k)
+    vector = _vector_search(query, top_k * 2)
+    bm25_ = _bm25_search(query, top_k * 2)
     return _rrf_merge(vector, bm25_, top_k)
