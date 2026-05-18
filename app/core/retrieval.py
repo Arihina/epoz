@@ -15,12 +15,21 @@ QUERY_PREFIX = "query: "
 
 RETRIEVAL_THRESHOLD = 0.35
 RETRIEVAL_TOP_K = 5
-
 RRF_K = 60
+DEDUP_THRESHOLD = 0.85
 
-DEDUP_THRESHOLD = 0.92
+CHUNK_TYPE_BOOST: dict[str, float] = {
+    "paragraph": 0.00,
+    "table":     0.03,
+    "heading": -0.05,
+}
+
 
 JSON_SCORE_BOOST = 0.02
+
+
+type DocResult = dict
+
 
 embed_model = SentenceTransformer(EMBED_MODEL)
 chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
@@ -33,6 +42,13 @@ bm25: BM25Okapi | None = None
 
 def _tokenize(text: str) -> list[str]:
     return re.sub(r"[^\w\s]", " ", text.lower()).split()
+
+
+def _enrich_text(text: str, meta: dict) -> str:
+    section = meta.get("section", "").strip()
+    if section and section not in text:
+        return f"{section}\n{text}"
+    return text
 
 
 def _init_bm25() -> None:
@@ -51,7 +67,9 @@ def _init_bm25() -> None:
         documents, metadatas = [], []
 
     if documents:
-        tokenized = [_tokenize(doc) for doc in documents]
+        enriched = [_enrich_text(doc, meta)
+                    for doc, meta in zip(documents, metadatas)]
+        tokenized = [_tokenize(t) for t in enriched]
         bm25 = BM25Okapi(tokenized)
         print("[retrieval] BM25-индекс создан")
     else:
@@ -62,10 +80,6 @@ def _init_bm25() -> None:
 _init_bm25()
 
 
-# {"text": str, "source": str, "chunk_id": int|str, "score": float}
-type DocResult = dict
-
-
 def _doc_key(meta: dict, fallback_idx: int) -> tuple:
     return (
         meta.get("source", "unknown"),
@@ -74,24 +88,38 @@ def _doc_key(meta: dict, fallback_idx: int) -> tuple:
     )
 
 
+def _chunk_score_boost(meta: dict) -> float:
+    chunk_type = meta.get("chunk_type", "paragraph")
+    boost = CHUNK_TYPE_BOOST.get(chunk_type, 0.0)
+
+    if (meta.get("source_format") == "json"
+            and chunk_type in ("paragraph", "table")):
+        boost += JSON_SCORE_BOOST
+
+    return boost
+
+
+def _jaccard(a: str, b: str) -> float:
+    sa, sb = set(_tokenize(a)), set(_tokenize(b))
+    if not sa and not sb:
+        return 1.0
+    return len(sa & sb) / len(sa | sb)
+
+
 def _deduplicate(results: list[DocResult]) -> list[DocResult]:
     if len(results) <= 1:
         return results
 
-    def _similarity(a: str, b: str) -> float:
-        sa, sb = set(_tokenize(a)), set(_tokenize(b))
-        if not sa and not sb:
-            return 1.0
-        return len(sa & sb) / len(sa | sb)
-
     kept: list[DocResult] = []
     for candidate in results:
         is_dup = False
-        for existing in kept:
+        for i, existing in enumerate(kept):
             if candidate["source"] != existing["source"]:
                 continue
-            sim = _similarity(candidate["text"], existing["text"])
-            if sim >= DEDUP_THRESHOLD:
+            if _jaccard(candidate["text"], existing["text"]) >= DEDUP_THRESHOLD:
+                if (candidate.get("source_format") == "json"
+                        and existing.get("source_format") == "md"):
+                    kept[i] = candidate
                 is_dup = True
                 break
         if not is_dup:
@@ -104,7 +132,8 @@ def _bm25_search(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
     if bm25 is None or not documents:
         return []
 
-    scores = bm25.get_scores(_tokenize(query))
+    tokens = _tokenize(query)
+    scores = bm25.get_scores(tokens)
     ranked = np.argsort(scores)[::-1][:top_k]
 
     results: list[DocResult] = []
@@ -119,6 +148,8 @@ def _bm25_search(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
             "chunk_id":      _doc_key(meta, int(idx)),
             "score":         score,
             "source_format": meta.get("source_format", ""),
+            "chunk_type":    meta.get("chunk_type", ""),
+            "section":       meta.get("section", ""),
             "_meta":         meta,
         })
     return results
@@ -127,7 +158,7 @@ def _bm25_search(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
 def _vector_search(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
     try:
         embedding = embed_model.encode(
-            [QUERY_PREFIX + query] if QUERY_PREFIX else [query],
+            [QUERY_PREFIX + query],
             convert_to_numpy=True,
             normalize_embeddings=True,
         )[0].tolist()
@@ -152,6 +183,8 @@ def _vector_search(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
                     "chunk_id":      _doc_key(meta, i),
                     "score":         score,
                     "source_format": meta.get("source_format", ""),
+                    "chunk_type":    meta.get("chunk_type", ""),
+                    "section":       meta.get("section", ""),
                     "_meta":         meta,
                 })
         return results
@@ -183,11 +216,9 @@ def _rrf_merge(
         merged[key]["score"] += rrf
 
     for r in merged.values():
-        if r.get("source_format") == "json":
-            r["score"] += JSON_SCORE_BOOST
+        r["score"] += _chunk_score_boost(r.get("_meta", {}))
 
     ranked = sorted(merged.values(), key=lambda x: x["score"], reverse=True)
-
     deduped = _deduplicate(ranked)
 
     for r in deduped:
