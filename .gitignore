@@ -10,3 +10,6 @@ __pycache__
 *.db-shm
 *.db-wal
 *.env
+notes.md
+checklist.md
+*.sh

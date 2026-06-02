@@ -12,7 +12,7 @@ from app.api.feedback import router as feedback_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await create_tables()
+    # схему ведёт Alembic: alembic upgrade head перед стартом
     yield
 
 

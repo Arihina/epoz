@@ -37,6 +37,26 @@ alembic upgrade head
 python3 main.py
 ```
 
+> Схему ведёт только Alembic — приложение не создаёт таблицы при старте. `alembic upgrade head` обязателен перед первым запуском, иначе сервис упадёт при первом запросе.
+
+## Аутентификация
+
+Сервис не управляет пользователями — это задача платформы (мастер-агент + Keycloak). RAG-ассистент получает UUID пользователя в заголовке `X-User-Id` и использует его как скоуп для своих данных. Заголовок обязателен **во всех** запросах:
+
+```
+X-User-Id: 11111111-1111-1111-1111-111111111111
+```
+
+JWT валидирует мастер-агент; RAG доверяет внутреннему трафику (сервис должен быть закрыт снаружи в обход мастера). При переходе на валидацию JWT по JWKS Keycloak меняется только `get_user_id`, эндпоинты не затрагиваются.
+
+| Ситуация | Код |
+|----------|-----|
+| Заголовок `X-User-Id` отсутствует | `401` |
+| `X-User-Id` не является валидным UUID | `401` |
+| Обращение к чужому чату/сообщению | `404` |
+
+Возврат `404` (а не `403`) для чужих объектов сознателен: сервис не подтверждает их существование.
+
 ## База данных
 
 PostgreSQL 16. Подключение настраивается через переменные окружения в `.env`:
@@ -57,6 +77,7 @@ alembic upgrade head
 ```
 chat_sessions
 ├── id          SERIAL        PK
+├── user_id     UUID          NOT NULL, индексирован — владелец чата
 ├── title       VARCHAR(255)  nullable (подставляется из первого вопроса если не указан)
 ├── created_at  TIMESTAMPTZ
 └── updated_at  TIMESTAMPTZ
@@ -78,14 +99,16 @@ message_feedback
 └── updated_at  TIMESTAMPTZ
 ```
 
-Удаление каскадное. `sources` хранится как нативный JSONB — десериализация на стороне приложения не требуется.
+Принадлежность пользователю хранится только в `chat_sessions.user_id`. Сообщения и фидбэк скоупятся транзитивно через FK на сессию. Удаление каскадное. `sources` хранится как нативный JSONB — десериализация на стороне приложения не требуется.
 
 ## API
- 
+
+Все эндпоинты требуют заголовок `X-User-Id: <uuid>`. Списки и операции скоупятся по этому идентификатору; обращение к чужому ресурсу возвращает `404`.
+
 ### Чаты
  
 #### `POST /sessions`
-Создать новый чат.
+Создать новый чат (привязывается к `X-User-Id`).
  
 Тело запроса (опционально):
 ```json
@@ -105,7 +128,7 @@ message_feedback
 ---
  
 #### `GET /sessions`
-Список всех чатов, отсортированных по дате последнего сообщения (новые первые).
+Список чатов текущего пользователя, отсортированных по дате последнего сообщения (новые первые).
  
 Ответ:
 ```json
@@ -249,44 +272,56 @@ data: [DONE]
 ---
  
 ## Примеры curl
+
+Во всех запросах передаётся `X-User-Id`.
  
 ```bash
+U=11111111-1111-1111-1111-111111111111
+
 # Создать чат
 curl -k -X POST https://localhost:8443/sessions \
+  -H "X-User-Id: $U" \
   -H "Content-Type: application/json" \
   -d '{"title": "Тестовый чат"}'
  
 # Список чатов
-curl -k https://localhost:8443/sessions
+curl -k https://localhost:8443/sessions \
+  -H "X-User-Id: $U"
  
 # Отправить вопрос
 curl -k -X POST https://localhost:8443/sessions/1/chat \
+  -H "X-User-Id: $U" \
   -H "Content-Type: application/json" \
   -d '{"message": "Что такое Меры ограничительного характера"}' \
   --no-buffer
  
 # История сообщений
-curl -k https://localhost:8443/sessions/1/messages
+curl -k https://localhost:8443/sessions/1/messages \
+  -H "X-User-Id: $U"
  
 # Лайк с комментарием
 curl -k -X POST https://localhost:8443/messages/1/feedback \
+  -H "X-User-Id: $U" \
   -H "Content-Type: application/json" \
   -d '{"vote": 1, "comment": "Хороший ответ"}'
  
 # Только комментарий
 curl -k -X POST https://localhost:8443/messages/1/feedback \
+  -H "X-User-Id: $U" \
   -H "Content-Type: application/json" \
   -d '{"comment": "Ответ неточный"}'
  
 # Получить фидбэк
-curl -k https://localhost:8443/messages/1/feedback
+curl -k https://localhost:8443/messages/1/feedback \
+  -H "X-User-Id: $U"
  
 # Переименовать чат
 curl -k -X PATCH https://localhost:8443/sessions/1 \
+  -H "X-User-Id: $U" \
   -H "Content-Type: application/json" \
   -d '{"title": "Новое название"}'
  
 # Удалить чат
-curl -k -X DELETE https://localhost:8443/sessions/1
+curl -k -X DELETE https://localhost:8443/sessions/1 \
+  -H "X-User-Id: $U"
 ```
- 
