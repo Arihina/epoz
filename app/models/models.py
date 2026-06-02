@@ -1,11 +1,13 @@
-from datetime import datetime, timezone
 from sqlalchemy import (
     Integer, String, Text, ForeignKey, CheckConstraint,
     TIMESTAMP,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, DeclarativeBase, mapped_column, Mapped
+
 from typing import Optional
+from datetime import datetime, timezone
+from uuid import UUID as PyUUID
 
 
 class Base(DeclarativeBase):
@@ -16,6 +18,9 @@ class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True,
+    )
     title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc)
@@ -82,4 +87,5 @@ class MessageFeedback(Base):
                         name="ck_vote_values"),
     )
 
-    message: Mapped["ChatMessage"] = relationship(back_populates="feedback", lazy="selectin")
+    message: Mapped["ChatMessage"] = relationship(
+        back_populates="feedback", lazy="selectin")
