@@ -6,41 +6,55 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.models import ChatSession, ChatMessage, MessageFeedback
 
 
-async def create_session(db: AsyncSession, title: Optional[str] = None) -> ChatSession:
-    s = ChatSession(title=title)
+async def create_session(db: AsyncSession, user_id, title: Optional[str] = None) -> ChatSession:
+    s = ChatSession(user_id=user_id, title=title)
     db.add(s)
     await db.commit()
     await db.refresh(s)
     return s
 
 
-async def get_session(db: AsyncSession, session_id: int) -> Optional[ChatSession]:
-    result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
+async def get_session(db: AsyncSession, session_id: int, user_id) -> Optional[ChatSession]:
+    result = await db.execute(
+        select(ChatSession).where(
+            ChatSession.id == session_id,
+            ChatSession.user_id == user_id,
+        )
+    )
     return result.scalar_one_or_none()
 
 
-async def list_sessions(db: AsyncSession) -> list[ChatSession]:
-    result = await db.execute(select(ChatSession).order_by(ChatSession.updated_at.desc()))
+async def list_sessions(db: AsyncSession, user_id) -> list[ChatSession]:
+    result = await db.execute(
+        select(ChatSession)
+        .where(ChatSession.user_id == user_id)
+        .order_by(ChatSession.updated_at.desc())
+    )
     return result.scalars().all()
 
 
-async def rename_session(db: AsyncSession, session_id: int, title: str) -> Optional[ChatSession]:
-    s = await get_session(db, session_id)
-    if not s:
-        return None
+async def rename_session(db: AsyncSession, s: ChatSession, title: str) -> ChatSession:
     s.title = title
     await db.commit()
     await db.refresh(s)
     return s
 
 
-async def delete_session(db: AsyncSession, session_id: int) -> bool:
-    s = await get_session(db, session_id)
-    if not s:
-        return False
+async def delete_session(db: AsyncSession, s: ChatSession) -> None:
     await db.delete(s)
     await db.commit()
-    return True
+
+
+async def get_message_for_user(db: AsyncSession, message_id: int, user_id) -> Optional[ChatMessage]:
+    result = await db.execute(
+        select(ChatMessage)
+        .join(ChatSession, ChatMessage.session_id == ChatSession.id)
+        .where(
+            ChatMessage.id == message_id,
+            ChatSession.user_id == user_id,
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 async def _touch(db: AsyncSession, session_id: int) -> None:
