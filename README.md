@@ -62,10 +62,10 @@ JWT валидирует мастер-агент; RAG доверяет внут�
 PostgreSQL 16. Подключение настраивается через переменные окружения в `.env`:
 
 ```env
-DB_HOST=db
-DB_PORT=5432
-DB_USER=rag_user
-DB_PASSWORD=rag_pass
+DB_HOST=localhost
+DB_PORT=5433
+DB_USER=postgres
+DB_PASSWORD=postgres
 DB_NAME=rag_db
 ```
 
