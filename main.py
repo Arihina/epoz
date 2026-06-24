@@ -1,11 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 
 from contextlib import asynccontextmanager
 
-from app.db.database import create_tables
 from app.api.chat import router as chat_router
 from app.api.feedback import router as feedback_router
 
@@ -44,9 +41,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8443,
-        ssl_keyfile="key.pem",
-        ssl_certfile="cert.pem",
+        port=8001,
         reload=True,
         timeout_keep_alive=300,
     )
