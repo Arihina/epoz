@@ -28,7 +28,7 @@ python3 create_collection_hybrid.py \
     --reset
 ```
 ```
-docker compose -d
+sudo docker compose up -d
 ```
 ```
 alembic upgrade head
