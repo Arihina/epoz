@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     DB_PASSWORD: str
     DB_NAME: str
 
+    EMBED_MODEL: str
+    OLLAMA_MODEL: str
+
     @property
     def db_url(self) -> str:
         return (

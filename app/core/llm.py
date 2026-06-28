@@ -3,10 +3,11 @@ from typing import Generator
 import ollama
 
 from app.core.retrieval import retrieve, DocResult
+from app.core.config import settings
 
 
 OLLAMA_HOST = "http://localhost:11434"
-OLLAMA_MODEL = "gemma2:9b"
+OLLAMA_MODEL = settings.OLLAMA_MODEL
 RAG_MIN_SCORE = 0.013
 
 

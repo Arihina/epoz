@@ -12,6 +12,10 @@ curl -fsSl https://ollama.com/install.sh | sh
 ```
 ollama pull gemma2:9b
 ```
+или
+```
+ollama pull qwen3.6:35b
+```
 ```
 sudo apt install pandoc
 ```
@@ -100,6 +104,18 @@ message_feedback
 ```
 
 Принадлежность пользователю хранится только в `chat_sessions.user_id`. Сообщения и фидбэк скоупятся транзитивно через FK на сессию. Удаление каскадное. `sources` хранится как нативный JSONB — десериализация на стороне приложения не требуется.
+
+## Models
+Так же модели настраиваются через `.env`
+```
+EMBED_MODEL=BAAI/bge-m3
+OLLAMA_MODEL=qwen3.6:35b
+```
+или
+```
+EMBED_MODEL=intfloat/multilingual-e5-small
+OLLAMA_MODEL=gemma2:9b
+```
 
 ## API
 

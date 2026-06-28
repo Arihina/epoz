@@ -6,15 +6,17 @@ from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 import chromadb
 
+from app.core.config import settings
+
 
 CHROMA_PATH = "./chroma_db"
 CHROMA_COLLECTION = "rag_docs_hybrid"
-EMBED_MODEL = "intfloat/multilingual-e5-small"
+EMBED_MODEL = settings.EMBED_MODEL
 
 QUERY_PREFIX = "query: "
 
 RETRIEVAL_THRESHOLD = 0.35
-RETRIEVAL_TOP_K = 5
+RETRIEVAL_TOP_K = 10
 RRF_K = 60
 DEDUP_THRESHOLD = 0.85
 
