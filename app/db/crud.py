@@ -145,3 +145,8 @@ async def get_feedback(db: AsyncSession, message_id: int) -> Optional[MessageFee
         select(MessageFeedback).where(MessageFeedback.message_id == message_id)
     )
     return result.scalar_one_or_none()
+
+
+async def delete_all_sessions(db: AsyncSession) -> None:
+    await db.execute(delete(ChatSession))
+    await db.commit()

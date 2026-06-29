@@ -167,3 +167,13 @@ async def chat(
 async def reset(s=Depends(get_owned_session)):
     _histories.pop(s.id, None)
     return {"status": "ok"}
+
+
+@router.get("/sessions/clear")
+async def clear_all_sessions(
+    db: AsyncSession = Depends(get_db),
+):
+    await crud.delete_all_sessions(db)
+    _histories.clear()
+
+    return {"status": "ok", "message": "Все чаты удалены"}
