@@ -1,6 +1,7 @@
 import json
 from datetime import datetime, timezone
 from typing import Optional
+from uuid import UUID
 from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.models import ChatSession, ChatMessage, MessageFeedback
@@ -14,7 +15,7 @@ async def create_session(db: AsyncSession, user_id, title: Optional[str] = None)
     return s
 
 
-async def get_session(db: AsyncSession, session_id: int, user_id) -> Optional[ChatSession]:
+async def get_session(db: AsyncSession, session_id: UUID, user_id) -> Optional[ChatSession]:
     result = await db.execute(
         select(ChatSession).where(
             ChatSession.id == session_id,
@@ -45,7 +46,7 @@ async def delete_session(db: AsyncSession, s: ChatSession) -> None:
     await db.commit()
 
 
-async def get_message_for_user(db: AsyncSession, message_id: int, user_id) -> Optional[ChatMessage]:
+async def get_message_for_user(db: AsyncSession, message_id: UUID, user_id) -> Optional[ChatMessage]:
     result = await db.execute(
         select(ChatMessage)
         .join(ChatSession, ChatMessage.session_id == ChatSession.id)
@@ -57,7 +58,7 @@ async def get_message_for_user(db: AsyncSession, message_id: int, user_id) -> Op
     return result.scalar_one_or_none()
 
 
-async def _touch(db: AsyncSession, session_id: int) -> None:
+async def _touch(db: AsyncSession, session_id: UUID) -> None:
     await db.execute(
         update(ChatSession)
         .where(ChatSession.id == session_id)
@@ -68,7 +69,7 @@ async def _touch(db: AsyncSession, session_id: int) -> None:
 
 async def add_message(
     db: AsyncSession,
-    session_id: int,
+    session_id: UUID,
     role: str,
     content: str,
     sources: Optional[list[str]] = None,
@@ -86,28 +87,28 @@ async def add_message(
     return msg
 
 
-async def get_messages(db: AsyncSession, session_id: int) -> list[ChatMessage]:
+async def get_messages(db: AsyncSession, session_id: UUID) -> list[ChatMessage]:
     result = await db.execute(
         select(ChatMessage)
         .where(ChatMessage.session_id == session_id)
-        .order_by(ChatMessage.id)
+        .order_by(ChatMessage.created_at)
     )
     return result.scalars().all()
 
 
-async def get_message(db: AsyncSession, message_id: int) -> Optional[ChatMessage]:
+async def get_message(db: AsyncSession, message_id: UUID) -> Optional[ChatMessage]:
     result = await db.execute(select(ChatMessage).where(ChatMessage.id == message_id))
     return result.scalar_one_or_none()
 
 
-async def build_history(db: AsyncSession, session_id: int) -> list[tuple[str, str]]:
+async def build_history(db: AsyncSession, session_id: UUID) -> list[tuple[str, str]]:
     messages = await get_messages(db, session_id)
     return [(m.role, m.content) for m in messages]
 
 
 async def upsert_feedback(
     db: AsyncSession,
-    message_id: int,
+    message_id: UUID,
     vote,
     comment,
     missing,
@@ -140,7 +141,7 @@ async def upsert_feedback(
     return fb
 
 
-async def get_feedback(db: AsyncSession, message_id: int) -> Optional[MessageFeedback]:
+async def get_feedback(db: AsyncSession, message_id: UUID) -> Optional[MessageFeedback]:
     result = await db.execute(
         select(MessageFeedback).where(MessageFeedback.message_id == message_id)
     )
