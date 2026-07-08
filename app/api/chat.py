@@ -18,7 +18,7 @@ from app.api.deps import get_owned_session
 
 router = APIRouter()
 
-_histories: dict[int, list[tuple[str, str]]] = {}
+_histories: dict[UUID, list[tuple[str, str]]] = {}
 
 
 def _fmt_session(s) -> dict:
@@ -150,7 +150,7 @@ async def chat(
             yield chunk
 
         message_id = await _save(state["answer"], state["sources"])
-        yield f"data: {json.dumps({'message_id': message_id}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'message_id': str(message_id)}, ensure_ascii=False)}\n\n"
 
         history.append(("user", question))
         history.append(("assistant", state["answer"]))

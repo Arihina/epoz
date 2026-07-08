@@ -8,7 +8,7 @@ from app.core.auth import get_user_id
 
 
 async def get_owned_session(
-    session_id: int,
+    session_id: UUID,
     user_id: UUID = Depends(get_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -19,7 +19,7 @@ async def get_owned_session(
 
 
 async def get_owned_message(
-    message_id: int,
+    message_id: UUID,
     user_id: UUID = Depends(get_user_id),
     db: AsyncSession = Depends(get_db),
 ):
