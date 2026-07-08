@@ -7,7 +7,7 @@ from sqlalchemy.orm import relationship, DeclarativeBase, mapped_column, Mapped
 
 from typing import Optional
 from datetime import datetime, timezone
-from uuid import UUID as PyUUID
+from uuid import UUID as PyUUID, uuid4
 
 
 class Base(DeclarativeBase):
@@ -17,7 +17,9 @@ class Base(DeclarativeBase):
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid4,
+    )
     user_id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True,
     )
@@ -34,7 +36,7 @@ class ChatSession(Base):
     messages: Mapped[list["ChatMessage"]] = relationship(
         back_populates="session",
         cascade="all, delete-orphan",
-        order_by="ChatMessage.id",
+        order_by="ChatMessage.created_at",
         lazy="selectin"
     )
 
@@ -42,9 +44,11 @@ class ChatSession(Base):
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    session_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("chat_sessions.id", ondelete="CASCADE"),
+    id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid4,
+    )
+    session_id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("chat_sessions.id", ondelete="CASCADE"),
         nullable=False, index=True,
     )
     role: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -67,8 +71,8 @@ class MessageFeedback(Base):
     __tablename__ = "message_feedback"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    message_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("chat_messages.id", ondelete="CASCADE"),
+    message_id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("chat_messages.id", ondelete="CASCADE"),
         nullable=False, unique=True, index=True,
     )
     vote: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
