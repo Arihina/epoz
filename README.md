@@ -78,25 +78,27 @@ DB_NAME=rag_db
 alembic upgrade head
 ```
 
+> Все идентификаторы сущностей (`chat_sessions.id`, `chat_messages.id`, `chat_messages.session_id`, `message_feedback.message_id`) — **UUID**, а не автоинкрементные числа. `id` строки `message_feedback` остаётся `SERIAL` — это идентификатор самой записи фидбэка, наружу не используется. UUID генерируется на стороне приложения при вставке (`default=uuid4`), поэтому предсказать `id` до создания объекта нельзя — сначала `POST /sessions`, затем используем `id` из ответа.
+
 ```
 chat_sessions
-├── id          SERIAL        PK
+├── id          UUID          PK, генерируется приложением (uuid4)
 ├── user_id     UUID          NOT NULL, индексирован — владелец чата
 ├── title       VARCHAR(255)  nullable (подставляется из первого вопроса если не указан)
 ├── created_at  TIMESTAMPTZ
 └── updated_at  TIMESTAMPTZ
 
 chat_messages
-├── id          SERIAL        PK
-├── session_id  INTEGER       FK → chat_sessions.id
+├── id          UUID          PK, генерируется приложением (uuid4)
+├── session_id  UUID          FK → chat_sessions.id
 ├── role        VARCHAR(16)   "user" | "assistant"
 ├── content     TEXT
 ├── sources     JSONB         список источников
 └── created_at  TIMESTAMPTZ
 
 message_feedback
-├── id          SERIAL        PK
-├── message_id  INTEGER       FK → chat_messages.id (уникальный — одна оценка на сообщение)
+├── id          SERIAL        PK (идентификатор самой записи фидбэка, не используется в API)
+├── message_id  UUID          FK → chat_messages.id (уникальный — одна оценка на сообщение)
 ├── vote        INTEGER       1 = лайк / -1 = дизлайк / NULL = без оценки
 ├── comment     TEXT          nullable
 ├── created_at  TIMESTAMPTZ
@@ -104,6 +106,8 @@ message_feedback
 ```
 
 Принадлежность пользователю хранится только в `chat_sessions.user_id`. Сообщения и фидбэк скоупятся транзитивно через FK на сессию. Удаление каскадное. `sources` хранится как нативный JSONB — десериализация на стороне приложения не требуется.
+
+Порядок сообщений в истории и в relationship `ChatSession.messages` определяется полем `created_at`, а не `id` — с переходом на UUID сортировка по `id` больше не гарантирует хронологию.
 
 ## Models
 Так же модели настраиваются через `.env`
@@ -121,6 +125,8 @@ OLLAMA_MODEL=gemma2:9b
 
 Все эндпоинты требуют заголовок `X-User-Id: <uuid>`. Списки и операции скоупятся по этому идентификатору; обращение к чужому ресурсу возвращает `404`.
 
+`{session_id}` и `{message_id}` в путях — UUID (например, `3fa85f64-5717-4562-b3fc-2c963f66afa6`). Запрос с некорректным форматом UUID в пути возвращает `422`, не `404`.
+
 ### Чаты
  
 #### `POST /sessions`
@@ -134,7 +140,7 @@ OLLAMA_MODEL=gemma2:9b
 Ответ:
 ```json
 {
-  "id": 1,
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "title": "Название чата",
   "created_at": "2024-01-01T12:00:00",
   "updated_at": "2024-01-01T12:00:00"
@@ -150,7 +156,7 @@ OLLAMA_MODEL=gemma2:9b
 ```json
 [
   {
-    "id": 1,
+    "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
     "title": "Что такое RAG",
     "created_at": "2024-01-01T12:00:00",
     "updated_at": "2024-01-01T12:05:00"
@@ -167,7 +173,7 @@ OLLAMA_MODEL=gemma2:9b
 ```json
 [
   {
-    "id": 1,
+    "id": "9c858901-8a57-4791-81fe-4c455b099bc9",
     "role": "user",
     "content": "Что такое RAG",
     "sources": [],
@@ -175,7 +181,7 @@ OLLAMA_MODEL=gemma2:9b
     "feedback": null
   },
   {
-    "id": 2,
+    "id": "1e6b7ee7-d5bb-4f0a-8f9e-a06f19a8f3c2",
     "role": "assistant",
     "content": "RAG (Retrieval-Augmented Generation) — это...",
     "sources": ["doc1.pdf"],
@@ -199,7 +205,7 @@ OLLAMA_MODEL=gemma2:9b
 Ответ:
 ```json
 {
-  "id": 1,
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "title": "Новое название",
   "created_at": "2024-01-01T12:00:00",
   "updated_at": "2024-01-01T12:10:00"
@@ -233,14 +239,14 @@ data: {"token": " — это"}
 data: {"token": " метод..."}
 ...
 data: {"token": "\n\nИсточники:\n- doc1.pdf"}
-data: {"message_id": 2}
+data: {"message_id": "1e6b7ee7-d5bb-4f0a-8f9e-a06f19a8f3c2"}
 data: [DONE]
 ```
 
 Порядок событий:
 - `chunks` — **первое** событие, приходит до начала генерации; содержит список извлечённых фрагментов, которые использовались как контекст для ответа (только при RAG-запросе, при small-talk отсутствует)
 - `token` — токены ответа LLM, включая блок источников в конце
-- `message_id` — ID сохранённого сообщения, используется для отправки фидбэка
+- `message_id` — UUID сохранённого сообщения (строка), используется для отправки фидбэка
 - `[DONE]` — завершение потока
  
 > `message_id` из предпоследнего события используется для отправки фидбэка.
@@ -265,7 +271,7 @@ data: [DONE]
 Ответ:
 ```json
 {
-  "message_id": 2,
+  "message_id": "1e6b7ee7-d5bb-4f0a-8f9e-a06f19a8f3c2",
   "vote": 1,
   "comment": "Очень подробно",
   "created_at": "2024-01-01T12:01:00",
@@ -289,7 +295,7 @@ data: [DONE]
  
 ## Примеры curl
 
-Во всех запросах передаётся `X-User-Id`.
+Во всех запросах передаётся `X-User-Id`. `SID`/`MID` ниже — UUID, полученные из ответов `POST /sessions` и `POST /sessions/{session_id}/chat` соответственно.
  
 ```bash
 U=11111111-1111-1111-1111-111111111111
@@ -299,45 +305,51 @@ curl -k -X POST https://localhost:8443/sessions \
   -H "X-User-Id: $U" \
   -H "Content-Type: application/json" \
   -d '{"title": "Тестовый чат"}'
- 
+# -> {"id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", ...}
+
+SID=3fa85f64-5717-4562-b3fc-2c963f66afa6
+
 # Список чатов
 curl -k https://localhost:8443/sessions \
   -H "X-User-Id: $U"
  
 # Отправить вопрос
-curl -k -X POST https://localhost:8443/sessions/1/chat \
+curl -k -X POST https://localhost:8443/sessions/$SID/chat \
   -H "X-User-Id: $U" \
   -H "Content-Type: application/json" \
   -d '{"message": "Что такое Меры ограничительного характера"}' \
   --no-buffer
- 
+# -> в потоке придёт data: {"message_id": "..."}
+
+MID=1e6b7ee7-d5bb-4f0a-8f9e-a06f19a8f3c2
+
 # История сообщений
-curl -k https://localhost:8443/sessions/1/messages \
+curl -k https://localhost:8443/sessions/$SID/messages \
   -H "X-User-Id: $U"
  
 # Лайк с комментарием
-curl -k -X POST https://localhost:8443/messages/1/feedback \
+curl -k -X POST https://localhost:8443/messages/$MID/feedback \
   -H "X-User-Id: $U" \
   -H "Content-Type: application/json" \
   -d '{"vote": 1, "comment": "Хороший ответ"}'
  
 # Только комментарий
-curl -k -X POST https://localhost:8443/messages/1/feedback \
+curl -k -X POST https://localhost:8443/messages/$MID/feedback \
   -H "X-User-Id: $U" \
   -H "Content-Type: application/json" \
   -d '{"comment": "Ответ неточный"}'
  
 # Получить фидбэк
-curl -k https://localhost:8443/messages/1/feedback \
+curl -k https://localhost:8443/messages/$MID/feedback \
   -H "X-User-Id: $U"
  
 # Переименовать чат
-curl -k -X PATCH https://localhost:8443/sessions/1 \
+curl -k -X PATCH https://localhost:8443/sessions/$SID \
   -H "X-User-Id: $U" \
   -H "Content-Type: application/json" \
   -d '{"title": "Новое название"}'
  
 # Удалить чат
-curl -k -X DELETE https://localhost:8443/sessions/1 \
+curl -k -X DELETE https://localhost:8443/sessions/$SID \
   -H "X-User-Id: $U"
 ```
