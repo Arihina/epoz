@@ -14,8 +14,8 @@ class Base(DeclarativeBase):
     pass
 
 
-class ChatSession(Base):
-    __tablename__ = "chat_sessions"
+class Conversation(Base):
+    __tablename__ = "conversations"
 
     id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid4,
@@ -34,10 +34,10 @@ class ChatSession(Base):
     )
 
     messages: Mapped[list["ChatMessage"]] = relationship(
-        back_populates="session",
+        back_populates="conversation",
         cascade="all, delete-orphan",
         order_by="ChatMessage.created_at",
-        lazy="selectin"
+        lazy="selectin",
     )
 
 
@@ -47,18 +47,25 @@ class ChatMessage(Base):
     id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid4,
     )
-    session_id: Mapped[PyUUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("chat_sessions.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+    user_id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True,
+    )
+    conversation_id: Mapped[Optional[PyUUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
     )
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     sources: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    retrieved_chunks: Mapped[Optional[list]] = mapped_column(
+        JSONB, nullable=True)
+    model: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
-    session: Mapped["ChatSession"] = relationship(back_populates="messages")
+    conversation: Mapped[Optional["Conversation"]] = relationship(
+        back_populates="messages")
     feedback: Mapped[Optional["MessageFeedback"]] = relationship(
         back_populates="message",
         uselist=False,
