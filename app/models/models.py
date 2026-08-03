@@ -60,6 +60,10 @@ class ChatMessage(Base):
     retrieved_chunks: Mapped[Optional[list]] = mapped_column(
         JSONB, nullable=True)
     model: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    prompt_tokens: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True)
+    completion_tokens: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
