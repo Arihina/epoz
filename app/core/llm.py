@@ -89,7 +89,7 @@ def find_used_sources(answer: str, docs: list[DocResult]) -> list[str]:
 def stream_answer(
     question: str,
     history: list[tuple[str, str]],
-) -> Generator[tuple[str, list[str] | None, list[DocResult] | None], None, None]:
+) -> Generator[tuple[str, list[str] | None, list[DocResult] | None, dict | None], None, None]:
     if is_small_talk(question):
         prompt = _general_prompt(history, question)
         docs = None
@@ -101,7 +101,7 @@ def stream_answer(
         else:
             prompt = _rag_prompt(docs, history, question)
 
-    yield "", None, docs
+    yield "", None, docs, None
 
     stream = _client.chat(
         model=OLLAMA_MODEL,
@@ -109,14 +109,26 @@ def stream_answer(
         stream=True,
     )
     full_answer = ""
+    prompt_tokens = 0
+    completion_tokens = 0
     for chunk in stream:
         token: str = chunk["message"]["content"]
         full_answer += token
-        yield token, None, None
+        if token:
+            yield token, None, None, None
+        if chunk.get("done"):
+            prompt_tokens = chunk.get("prompt_eval_count", 0) or 0
+            completion_tokens = chunk.get("eval_count", 0) or 0
 
     used_sources: list[str] | None = None
     if docs:
         used = find_used_sources(full_answer, docs)
         if used:
             used_sources = used
-    yield "", used_sources, None
+
+    usage = {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+    }
+    yield "", used_sources, None, usage
