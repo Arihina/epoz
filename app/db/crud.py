@@ -1,99 +1,107 @@
-import json
 from datetime import datetime, timezone
 from typing import Optional
-from uuid import UUID
-from sqlalchemy import select, update, delete
+from uuid import UUID, uuid4
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.models import ChatSession, ChatMessage, MessageFeedback
+from app.models.models import ChatMessage, MessageFeedback, Conversation
 
 
-async def create_session(db: AsyncSession, user_id, title: Optional[str] = None) -> ChatSession:
-    s = ChatSession(user_id=user_id, title=title)
-    db.add(s)
+async def create_conversation(db: AsyncSession, user_id, title: Optional[str] = None) -> Conversation:
+    c = Conversation(user_id=user_id, title=title)
+    db.add(c)
+    
     await db.commit()
-    await db.refresh(s)
-    return s
+    await db.refresh(c)
+
+    return c
 
 
-async def get_session(db: AsyncSession, session_id: UUID, user_id) -> Optional[ChatSession]:
+async def get_conversation(db: AsyncSession, conversation_id: UUID, user_id) -> Optional[Conversation]:
     result = await db.execute(
-        select(ChatSession).where(
-            ChatSession.id == session_id,
-            ChatSession.user_id == user_id,
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.user_id == user_id,
         )
     )
+
     return result.scalar_one_or_none()
 
 
-async def list_sessions(db: AsyncSession, user_id) -> list[ChatSession]:
+async def list_conversations(db: AsyncSession, user_id) -> list[Conversation]:
     result = await db.execute(
-        select(ChatSession)
-        .where(ChatSession.user_id == user_id)
-        .order_by(ChatSession.updated_at.desc())
+        select(Conversation)
+        .where(Conversation.user_id == user_id)
+        .order_by(Conversation.updated_at.desc())
     )
+
     return result.scalars().all()
 
 
-async def rename_session(db: AsyncSession, s: ChatSession, title: str) -> ChatSession:
-    s.title = title
+async def rename_conversation(db: AsyncSession, c: Conversation, title: str) -> Conversation:
+    c.title = title
+
     await db.commit()
-    await db.refresh(s)
-    return s
+    await db.refresh(c)
+
+    return c
 
 
-async def delete_session(db: AsyncSession, s: ChatSession) -> None:
-    await db.delete(s)
+async def delete_conversation(db: AsyncSession, c: Conversation) -> None:
+    await db.delete(c)
     await db.commit()
 
 
-async def get_message_for_user(db: AsyncSession, message_id: UUID, user_id) -> Optional[ChatMessage]:
+async def get_conversation_messages(db: AsyncSession, conversation_id: UUID) -> list[ChatMessage]:
     result = await db.execute(
         select(ChatMessage)
-        .join(ChatSession, ChatMessage.session_id == ChatSession.id)
-        .where(
-            ChatMessage.id == message_id,
-            ChatSession.user_id == user_id,
-        )
+        .where(ChatMessage.conversation_id == conversation_id)
+        .order_by(ChatMessage.created_at)
     )
-    return result.scalar_one_or_none()
+
+    return result.scalars().all()
 
 
-async def _touch(db: AsyncSession, session_id: UUID) -> None:
-    await db.execute(
-        update(ChatSession)
-        .where(ChatSession.id == session_id)
-        .values(updated_at=datetime.now(timezone.utc))
-    )
+async def touch_conversation(db: AsyncSession, conversation_id: UUID, title: Optional[str] = None) -> None:
+    c = await db.get(Conversation, conversation_id)
+    if c is None:
+        return
+    c.updated_at = datetime.now(timezone.utc)
+    if title is not None and c.title is None:
+        c.title = title
     await db.commit()
 
 
 async def add_message(
     db: AsyncSession,
-    session_id: UUID,
+    user_id,
     role: str,
     content: str,
     sources: Optional[list[str]] = None,
+    retrieved_chunks: Optional[list[dict]] = None,
+    model: Optional[str] = None,
+    prompt_tokens: Optional[int] = None,
+    completion_tokens: Optional[int] = None,
+    id: Optional[UUID] = None,
+    conversation_id: Optional[UUID] = None,
 ) -> ChatMessage:
     msg = ChatMessage(
-        session_id=session_id,
+        id=id or uuid4(),
+        user_id=user_id,
+        conversation_id=conversation_id,
         role=role,
         content=content,
         sources=sources,
+        retrieved_chunks=retrieved_chunks,
+        model=model,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
     )
     db.add(msg)
+
     await db.commit()
     await db.refresh(msg)
-    await _touch(db, session_id)
+
     return msg
-
-
-async def get_messages(db: AsyncSession, session_id: UUID) -> list[ChatMessage]:
-    result = await db.execute(
-        select(ChatMessage)
-        .where(ChatMessage.session_id == session_id)
-        .order_by(ChatMessage.created_at)
-    )
-    return result.scalars().all()
 
 
 async def get_message(db: AsyncSession, message_id: UUID) -> Optional[ChatMessage]:
@@ -101,9 +109,15 @@ async def get_message(db: AsyncSession, message_id: UUID) -> Optional[ChatMessag
     return result.scalar_one_or_none()
 
 
-async def build_history(db: AsyncSession, session_id: UUID) -> list[tuple[str, str]]:
-    messages = await get_messages(db, session_id)
-    return [(m.role, m.content) for m in messages]
+async def get_message_for_user(db: AsyncSession, message_id: UUID, user_id) -> Optional[ChatMessage]:
+    result = await db.execute(
+        select(ChatMessage).where(
+            ChatMessage.id == message_id,
+            ChatMessage.user_id == user_id,
+        )
+    )
+
+    return result.scalar_one_or_none()
 
 
 async def upsert_feedback(
@@ -146,8 +160,3 @@ async def get_feedback(db: AsyncSession, message_id: UUID) -> Optional[MessageFe
         select(MessageFeedback).where(MessageFeedback.message_id == message_id)
     )
     return result.scalar_one_or_none()
-
-
-async def delete_all_sessions(db: AsyncSession) -> None:
-    await db.execute(delete(ChatSession))
-    await db.commit()
