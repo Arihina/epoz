@@ -7,9 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
 from app.db import crud
 
-from app.api.deps import get_owned_message
+from app.api.deps import get_owned_completion
 
-router = APIRouter()
+router = APIRouter(
+    prefix="/v1/chat/completions/{completion_id}/feedback", tags=["feedback"])
 _MISSING = object()
 
 
@@ -23,10 +24,10 @@ def _feedback_out(fb) -> dict:
     }
 
 
-@router.post("/messages/{message_id}/feedback", status_code=200)
+@router.post("", status_code=200)
 async def set_feedback(
     body: dict = Body(default={}),
-    msg=Depends(get_owned_message),
+    msg=Depends(get_owned_completion),
     db: AsyncSession = Depends(get_db),
 ):
     raw_vote = body.get("vote", _MISSING)
@@ -43,9 +44,9 @@ async def set_feedback(
     return _feedback_out(fb)
 
 
-@router.get("/messages/{message_id}/feedback")
+@router.get("")
 async def get_feedback(
-    msg=Depends(get_owned_message),
+    msg=Depends(get_owned_completion),
     db: AsyncSession = Depends(get_db),
 ):
     fb = await crud.get_feedback(db, msg.id)
@@ -54,9 +55,9 @@ async def get_feedback(
     return _feedback_out(fb)
 
 
-@router.delete("/messages/{message_id}/feedback", status_code=204)
+@router.delete("", status_code=204)
 async def delete_feedback(
-    msg=Depends(get_owned_message),
+    msg=Depends(get_owned_completion),
     db: AsyncSession = Depends(get_db),
 ):
     fb = await crud.get_feedback(db, msg.id)
