@@ -136,7 +136,7 @@ async def chat_completions(
             _collect, question, history
         )
         if used_sources:
-            full_answer += "\n\nИсточники:\n" + \
+            full_answer += "\n\nПроанализированные источники:\n" + \
                 "\n".join(f"- {s}" for s in used_sources)
 
         await _persist(user_id, question, full_answer, used_sources, docs, model,
@@ -189,7 +189,7 @@ async def chat_completions(
                 state["usage"] = usage
 
         if state["used_sources"]:
-            src_text = "\n\nИсточники:\n" + \
+            src_text = "\n\nПроанализированные источники:\n" + \
                 "\n".join(f"- {s}" for s in state["used_sources"])
             state["answer"] += src_text
             chunk = {
