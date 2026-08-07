@@ -9,7 +9,7 @@ from app.models.models import ChatMessage, MessageFeedback, Conversation
 async def create_conversation(db: AsyncSession, user_id, title: Optional[str] = None) -> Conversation:
     c = Conversation(user_id=user_id, title=title)
     db.add(c)
-    
+
     await db.commit()
     await db.refresh(c)
 
@@ -57,17 +57,32 @@ async def get_conversation_messages(db: AsyncSession, conversation_id: UUID) -> 
         .where(ChatMessage.conversation_id == conversation_id)
         .order_by(ChatMessage.created_at)
     )
-
     return result.scalars().all()
+
+
+async def get_recent_conversation_messages(
+    db: AsyncSession, conversation_id: UUID, limit: int
+) -> list[ChatMessage]:
+    result = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.conversation_id == conversation_id)
+        .order_by(ChatMessage.created_at.desc())
+        .limit(limit)
+    )
+
+    return list(reversed(result.scalars().all()))
 
 
 async def touch_conversation(db: AsyncSession, conversation_id: UUID, title: Optional[str] = None) -> None:
     c = await db.get(Conversation, conversation_id)
+
     if c is None:
         return
+    
     c.updated_at = datetime.now(timezone.utc)
     if title is not None and c.title is None:
         c.title = title
+
     await db.commit()
 
 
@@ -116,7 +131,7 @@ async def get_message_for_user(db: AsyncSession, message_id: UUID, user_id) -> O
             ChatMessage.user_id == user_id,
         )
     )
-
+    
     return result.scalar_one_or_none()
 
 

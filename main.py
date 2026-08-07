@@ -7,6 +7,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from contextlib import asynccontextmanager
 
 from app.api.chat import router as chat_router
+from app.api.responses import router as responses_router
 from app.api.feedback import router as feedback_router
 from app.api.sources import router as sources_router
 from app.api.conversations import router as conversations_router
@@ -36,6 +37,7 @@ app.add_middleware(
 
 
 app.include_router(chat_router)
+app.include_router(responses_router)
 app.include_router(feedback_router)
 app.include_router(sources_router)
 app.include_router(conversations_router)

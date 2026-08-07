@@ -166,8 +166,7 @@ async def chat_completions(
                 state["docs"] = docs
                 chunk = {
                     "id": completion_id, "object": "chat.completion.chunk",
-                    "created": created, "model": model,
-                    "conversation_id": conversation_id_str,
+                    "created": created, "model": model, "conversation_id": conversation_id_str,
                     "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
                 }
                 yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
@@ -177,8 +176,7 @@ async def chat_completions(
                 state["answer"] += token
                 chunk = {
                     "id": completion_id, "object": "chat.completion.chunk",
-                    "created": created, "model": model,
-                    "conversation_id": conversation_id_str,
+                    "created": created, "model": model, "conversation_id": conversation_id_str,
                     "choices": [{"index": 0, "delta": {"content": token}, "finish_reason": None}],
                 }
                 yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
@@ -189,21 +187,19 @@ async def chat_completions(
                 state["usage"] = usage
 
         if state["used_sources"]:
-            src_text = "\n\nПроанализированные источники:\n" + \
+            src_text = "\n\Проанализированные источники:\n" + \
                 "\n".join(f"- {s}" for s in state["used_sources"])
             state["answer"] += src_text
             chunk = {
                 "id": completion_id, "object": "chat.completion.chunk",
-                "created": created, "model": model,
-                "conversation_id": conversation_id_str,
+                "created": created, "model": model, "conversation_id": conversation_id_str,
                 "choices": [{"index": 0, "delta": {"content": src_text}, "finish_reason": None}],
             }
             yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
 
         final_chunk = {
             "id": completion_id, "object": "chat.completion.chunk",
-            "created": created, "model": model,
-            "conversation_id": conversation_id_str,
+            "created": created, "model": model, "conversation_id": conversation_id_str,
             "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
         }
         yield f"data: {json.dumps(final_chunk, ensure_ascii=False)}\n\n"
@@ -226,7 +222,7 @@ async def chat_completions(
 
 
 @router.get("/{completion_id}")
-async def get_completion(completion_id: str, msg=Depends(get_owned_completion)):
+async def get_completion(msg=Depends(get_owned_completion)):
     if msg.role != "assistant":
         raise HTTPException(404, "Completion не найден")
 
