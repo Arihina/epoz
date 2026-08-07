@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     EMBED_MODEL: str
     OLLAMA_MODEL: str
 
+    HISTORY_LIMIT: int = 10
+
     @property
     def db_url(self) -> str:
         return (
