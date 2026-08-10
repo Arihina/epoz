@@ -9,134 +9,118 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
 
-from app.db.database import get_db, AsyncSessionLocal
+from app.db.database import get_db
 from app.db import crud
 
 from app.core.llm import stream_answer
 from app.core.auth import get_user_id
 from app.core.config import settings
-from app.core.retrieval import DocResult
-from app.api.deps import get_owned_completion
+from app.api.content import RESPONSES_TEXT_TYPES, extract_text
+from app.api.deps import get_owned_completion, parse_completion_id
+from app.api.generation import (
+    collect, format_sources, persist, sampling_options,
+)
 
 router = APIRouter(prefix="/v1/responses", tags=["responses"])
 
 DEFAULT_MODEL = "epoz"
-TITLE_MAX_LEN = 80
+
+_INSTRUCTION_ROLES = ("system", "developer")
+_DIALOG_ROLES = ("user", "assistant")
 
 
-def _trim_docs(docs: list[DocResult] | None) -> list[dict] | None:
-    if not docs:
-        return None
-    return [
-        {"text": d["text"], "source": d["source"],
-            "score": round(d["score"], 3)}
-        for d in docs
-    ]
+def _conversation_field(body: dict):
+    conversation = body.get("conversation")
+
+    if isinstance(conversation, dict):
+        return conversation.get("id")
+    if conversation is not None:
+        return conversation
+
+    return body.get("conversation_id")
 
 
-def _parse_content(content) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "\n".join(
-            str(p.get("text", "")) for p in content
-            if isinstance(p, dict) and p.get("type") in ("input_text", "output_text")
-        )
-    return ""
-
-
-def _extract(body: dict) -> tuple[str, list[tuple[str, str]], str, bool, str | None]:
+def _extract(body: dict) -> dict:
     model = body.get("model") or DEFAULT_MODEL
     input_data = body.get("input")
-    stream = body.get("stream", False)
-    conversation_id_raw = body.get("conversation_id")
+    stream = bool(body.get("stream", False))
+
+    options = sampling_options(
+        temperature=body.get("temperature"),
+        top_p=body.get("top_p"),
+        max_tokens=body.get("max_output_tokens"),
+    )
+
+    common = {
+        "model": model,
+        "stream": stream,
+        "options": options,
+        "conversation_raw": _conversation_field(body),
+        "previous_response_id": body.get("previous_response_id"),
+        "store": bool(body.get("store", True)),
+        "temperature": body.get("temperature"),
+        "top_p": body.get("top_p"),
+        "max_output_tokens": body.get("max_output_tokens"),
+        "metadata": body.get("metadata") or {},
+        "instructions": body.get("instructions"),
+    }
 
     if input_data is None:
-        raise HTTPException(422, "input обязателен")
+        raise HTTPException(400, "input обязателен")
 
     if isinstance(input_data, str):
-        question = input_data.replace("?", "").strip()
+        question = input_data.strip()
         if not question:
-            raise HTTPException(422, "Пустой input")
-        return model, [], question, bool(stream), conversation_id_raw
+            raise HTTPException(400, "Пустой input")
+        return {**common, "history": [], "question": question}
 
     if not isinstance(input_data, list) or not input_data:
         raise HTTPException(
-            422, "input должен быть строкой или непустым списком items")
+            400, "input должен быть строкой или непустым списком items")
 
     last = input_data[-1]
     if not isinstance(last, dict) or last.get("role") != "user":
         raise HTTPException(
-            422, 'последний item в input должен иметь role="user"')
+            400, 'последний item в input должен иметь role="user"')
 
-    question = _parse_content(last.get("content")).replace("?", "").strip()
+    question = extract_text(last.get("content"), RESPONSES_TEXT_TYPES).strip()
     if not question:
-        raise HTTPException(422, "Пустой вопрос")
+        raise HTTPException(400, "Пустой вопрос")
+
+    items = [m for m in input_data[:-1]
+             if isinstance(m, dict) and m.get("type", "message") == "message"]
+
+    inline_instructions = "\n".join(
+        text for text in (
+            extract_text(m.get("content"), RESPONSES_TEXT_TYPES)
+            for m in items if m.get("role") in _INSTRUCTION_ROLES
+        ) if text.strip()
+    )
+    if inline_instructions:
+        common["instructions"] = "\n".join(
+            filter(None, [common["instructions"], inline_instructions]))
 
     history = [
-        (m["role"], _parse_content(m.get("content")))
-        for m in input_data[:-1]
-        if isinstance(m, dict) and m.get("type", "message") == "message"
-        and m.get("role") in ("user", "assistant")
+        (m["role"], extract_text(m.get("content"), RESPONSES_TEXT_TYPES))
+        for m in items if m.get("role") in _DIALOG_ROLES
     ]
 
-    return model, history, question, bool(stream), conversation_id_raw
+    return {**common, "history": history, "question": question}
 
 
-def _collect(question: str, history: list[tuple[str, str]]):
-    full_answer = ""
-    used_sources: list[str] | None = None
-    docs = None
-    usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-
-    for token, used, d, u in stream_answer(question, history):
-        if d is not None:
-            docs = d
-        if token:
-            full_answer += token
-        if used is not None:
-            used_sources = used
-        if u is not None:
-            usage = u
-
-    return full_answer, used_sources, docs, usage
-
-
-async def _persist(
-    user_id: UUID,
-    question: str,
-    answer: str,
-    used_sources: list[str] | None,
-    docs: list[DocResult] | None,
-    model: str,
-    assistant_id: UUID,
-    conversation_id: UUID | None,
-    usage: dict | None,
-) -> None:
+def _usage_out(usage: dict | None) -> dict:
+    """input_tokens_details / output_tokens_details обязательны в объекте
+    usage — без них официальный SDK не разбирает ответ."""
     usage = usage or {}
-    async with AsyncSessionLocal() as write_db:
-        await crud.add_message(
-            write_db, user_id=user_id, role="user", content=question,
-            conversation_id=conversation_id,
-        )
-        await crud.add_message(
-            write_db, user_id=user_id, role="assistant", content=answer,
-            sources=used_sources, retrieved_chunks=_trim_docs(docs), model=model,
-            prompt_tokens=usage.get("prompt_tokens"),
-            completion_tokens=usage.get("completion_tokens"),
-            id=assistant_id, conversation_id=conversation_id,
-        )
-        if conversation_id is not None:
-            title = question[:TITLE_MAX_LEN] + \
-                ("…" if len(question) > TITLE_MAX_LEN else "")
-            await crud.touch_conversation(write_db, conversation_id, title=title)
+    pt = usage.get("prompt_tokens", 0) or 0
+    ct = usage.get("completion_tokens", 0) or 0
 
-
-def _usage_out(usage: dict) -> dict:
     return {
-        "input_tokens": usage.get("prompt_tokens", 0),
-        "output_tokens": usage.get("completion_tokens", 0),
-        "total_tokens": usage.get("total_tokens", 0),
+        "input_tokens": pt,
+        "input_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
+        "output_tokens": ct,
+        "output_tokens_details": {"reasoning_tokens": 0},
+        "total_tokens": usage.get("total_tokens", pt + ct),
     }
 
 
@@ -147,7 +131,8 @@ def _message_item(item_id: str, text: str, status: str) -> dict:
         "status": status,
         "role": "assistant",
         "content": [
-            {"type": "output_text", "text": text, "annotations": []},
+            {"type": "output_text", "text": text,
+                "annotations": [], "logprobs": []},
         ],
     }
 
@@ -155,18 +140,37 @@ def _message_item(item_id: str, text: str, status: str) -> dict:
 def _response_object(
     response_id: str, created: int, model: str, conversation_id_str: str | None,
     status: str, output: list[dict], usage: dict | None = None,
+    req: dict | None = None, error: dict | None = None,
 ) -> dict:
+    req = req or {}
+
     obj = {
         "id": response_id,
         "object": "response",
         "created_at": created,
         "status": status,
         "model": model,
-        "conversation_id": conversation_id_str,
         "output": output,
+        "parallel_tool_calls": False,
+        "tool_choice": "auto",
+        "tools": [],
+        "error": error,
+        "incomplete_details": None,
+        "instructions": req.get("instructions"),
+        "metadata": req.get("metadata") or {},
+        "temperature": req.get("temperature"),
+        "top_p": req.get("top_p"),
+        "max_output_tokens": req.get("max_output_tokens"),
+        "previous_response_id": req.get("previous_response_id"),
+        "store": req.get("store", True),
+        "truncation": "disabled",
+        "text": {"format": {"type": "text"}},
+        # Расширение платформы, не часть спецификации.
+        "conversation_id": conversation_id_str,
     }
     if usage is not None:
         obj["usage"] = usage
+
     return obj
 
 
@@ -175,29 +179,48 @@ def _sse_event(seq: int, event_type: str, **fields) -> str:
     return f"event: {event_type}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
+async def _resolve_conversation(db, user_id, req) -> UUID | None:
+    raw = req["conversation_raw"]
+
+    if raw is None and req["previous_response_id"]:
+        prev = await crud.get_message_for_user(
+            db, parse_completion_id(req["previous_response_id"]), user_id)
+        if prev is None:
+            raise HTTPException(404, "previous_response_id не найден")
+        return prev.conversation_id
+
+    if raw is None:
+        return None
+
+    try:
+        conversation_id = UUID(str(raw))
+    except ValueError:
+        raise HTTPException(400, "conversation должен быть UUID")
+
+    if await crud.get_conversation(db, conversation_id, user_id) is None:
+        raise HTTPException(404, "Чат (conversation) не найден")
+
+    return conversation_id
+
+
 @router.post("")
 async def create_response(
     body: dict = Body(...),
     user_id: UUID = Depends(get_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    model, history, question, stream, conversation_id_raw = _extract(body)
+    req = _extract(body)
+    model = req["model"]
 
-    conversation_id: UUID | None = None
-    if conversation_id_raw is not None:
-        try:
-            conversation_id = UUID(str(conversation_id_raw))
-        except ValueError:
-            raise HTTPException(422, "conversation_id должен быть UUID")
-        if await crud.get_conversation(db, conversation_id, user_id) is None:
-            raise HTTPException(404, "Чат (conversation_id) не найден")
+    conversation_id = await _resolve_conversation(db, user_id, req)
+    history = req["history"]
 
+    if conversation_id is not None:
         if history:
             raise HTTPException(
-                422,
-                "При переданном conversation_id input должен содержать "
-                "только новый ход (без истории) — история собирается "
-                "агентом из БД по conversation_id",
+                400,
+                "При переданном conversation input должен содержать только "
+                "новый ход (без истории) — история собирается агентом из БД",
             )
         history = [
             (m.role, m.content)
@@ -211,21 +234,20 @@ async def create_response(
     created = int(time.time())
     conversation_id_str = str(conversation_id) if conversation_id else None
 
-    if not stream:
-        full_answer, used_sources, docs, usage = await run_in_threadpool(
-            _collect, question, history
+    if not req["stream"]:
+        gen = await run_in_threadpool(
+            collect, req["question"], history, req["instructions"], req["options"],
         )
-        if used_sources:
-            full_answer += "\n\nПроанализированные источники:\n" + \
-                "\n".join(f"- {s}" for s in used_sources)
+        answer = gen.answer + format_sources(gen.used_sources)
 
-        await _persist(user_id, question, full_answer, used_sources, docs, model,
-                       assistant_id, conversation_id, usage)
+        if req["store"]:
+            await persist(user_id, req["question"], answer, gen.used_sources,
+                          gen.docs, model, assistant_id, conversation_id, gen.usage)
 
         return _response_object(
             response_id, created, model, conversation_id_str, "completed",
-            output=[_message_item(item_id, full_answer, "completed")],
-            usage=_usage_out(usage),
+            output=[_message_item(item_id, answer, "completed")],
+            usage=_usage_out(gen.usage), req=req,
         )
 
     state = {"answer": "", "used_sources": None, "docs": None, "usage": None}
@@ -242,7 +264,13 @@ async def create_response(
             _next(), "response.created",
             response=_response_object(
                 response_id, created, model, conversation_id_str,
-                "in_progress", output=[]),
+                "in_progress", output=[], req=req),
+        )
+        yield _sse_event(
+            _next(), "response.in_progress",
+            response=_response_object(
+                response_id, created, model, conversation_id_str,
+                "in_progress", output=[], req=req),
         )
         yield _sse_event(
             _next(), "response.output_item.added",
@@ -251,11 +279,15 @@ async def create_response(
         yield _sse_event(
             _next(), "response.content_part.added",
             item_id=item_id, output_index=0, content_index=0,
-            part={"type": "output_text", "text": "", "annotations": []},
+            part={"type": "output_text", "text": "",
+                  "annotations": [], "logprobs": []},
         )
 
         first = True
-        for token, used, docs, usage in stream_answer(question, history):
+        for token, used, docs, usage in stream_answer(
+            req["question"], history,
+            instructions=req["instructions"], options=req["options"],
+        ):
             if first:
                 first = False
                 state["docs"] = docs
@@ -266,7 +298,7 @@ async def create_response(
                 yield _sse_event(
                     _next(), "response.output_text.delta",
                     item_id=item_id, output_index=0, content_index=0,
-                    delta=token,
+                    delta=token, logprobs=[],
                 )
 
             if used is not None:
@@ -274,52 +306,55 @@ async def create_response(
             if usage is not None:
                 state["usage"] = usage
 
-        if state["used_sources"]:
-            src_text = "\n\nПроанализированные источники:\n" + \
-                "\n".join(f"- {s}" for s in state["used_sources"])
+        src_text = format_sources(state["used_sources"])
+        if src_text:
             state["answer"] += src_text
             yield _sse_event(
                 _next(), "response.output_text.delta",
                 item_id=item_id, output_index=0, content_index=0,
-                delta=src_text,
+                delta=src_text, logprobs=[],
             )
 
         yield _sse_event(
             _next(), "response.output_text.done",
             item_id=item_id, output_index=0, content_index=0,
-            text=state["answer"],
+            text=state["answer"], logprobs=[],
         )
         yield _sse_event(
             _next(), "response.content_part.done",
             item_id=item_id, output_index=0, content_index=0,
-            part={"type": "output_text",
-                  "text": state["answer"], "annotations": []},
+            part={"type": "output_text", "text": state["answer"],
+                  "annotations": [], "logprobs": []},
         )
 
         final_item = _message_item(item_id, state["answer"], "completed")
         yield _sse_event(_next(), "response.output_item.done",
                          output_index=0, item=final_item)
 
-        usage_out = _usage_out(state["usage"] or {})
         yield _sse_event(
             _next(), "response.completed",
             response=_response_object(
                 response_id, created, model, conversation_id_str,
-                "completed", output=[final_item], usage=usage_out),
+                "completed", output=[final_item],
+                usage=_usage_out(state["usage"]), req=req),
         )
 
     async def _async_gen():
+        seen = 0
         try:
             async for chunk in iterate_in_threadpool(_gen()):
+                seen += 1
                 yield chunk
         except Exception as e:
-            yield _sse_event(9999, "error", message=str(e), code=None, param=None)
+            yield _sse_event(seen + 1, "error",
+                             message=str(e), code=None, param=None)
             return
 
-        await _persist(
-            user_id, question, state["answer"], state["used_sources"],
-            state["docs"], model, assistant_id, conversation_id, state["usage"],
-        )
+        if req["store"]:
+            await persist(
+                user_id, req["question"], state["answer"], state["used_sources"],
+                state["docs"], model, assistant_id, conversation_id, state["usage"],
+            )
 
     return StreamingResponse(
         _async_gen(),
@@ -333,16 +368,27 @@ async def get_response(msg=Depends(get_owned_completion)):
     if msg.role != "assistant":
         raise HTTPException(404, "Response не найден")
 
-    usage_out = {
-        "input_tokens": msg.prompt_tokens or 0,
-        "output_tokens": msg.completion_tokens or 0,
-        "total_tokens": (msg.prompt_tokens or 0) + (msg.completion_tokens or 0),
-    }
-
     return _response_object(
         f"resp_{msg.id}", int(msg.created_at.timestamp()), msg.model,
         str(msg.conversation_id) if msg.conversation_id else None,
         "completed",
         output=[_message_item(f"msg_{msg.id}", msg.content, "completed")],
-        usage=usage_out,
+        usage=_usage_out({
+            "prompt_tokens": msg.prompt_tokens or 0,
+            "completion_tokens": msg.completion_tokens or 0,
+        }),
     )
+
+
+@router.delete("/{completion_id}")
+async def delete_response(
+    msg=Depends(get_owned_completion),
+    db: AsyncSession = Depends(get_db),
+):
+    if msg.role != "assistant":
+        raise HTTPException(404, "Response не найден")
+
+    response_id = f"resp_{msg.id}"
+    await crud.delete_message(db, msg)
+
+    return {"id": response_id, "object": "response.deleted", "deleted": True}
