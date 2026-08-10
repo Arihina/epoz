@@ -78,7 +78,7 @@ async def touch_conversation(db: AsyncSession, conversation_id: UUID, title: Opt
 
     if c is None:
         return
-    
+
     c.updated_at = datetime.now(timezone.utc)
     if title is not None and c.title is None:
         c.title = title
@@ -131,7 +131,7 @@ async def get_message_for_user(db: AsyncSession, message_id: UUID, user_id) -> O
             ChatMessage.user_id == user_id,
         )
     )
-    
+
     return result.scalar_one_or_none()
 
 
@@ -175,3 +175,8 @@ async def get_feedback(db: AsyncSession, message_id: UUID) -> Optional[MessageFe
         select(MessageFeedback).where(MessageFeedback.message_id == message_id)
     )
     return result.scalar_one_or_none()
+
+
+async def delete_message(db: AsyncSession, msg: ChatMessage) -> None:
+    await db.delete(msg)
+    await db.commit()
