@@ -33,7 +33,7 @@ JSON_SCORE_BOOST = 0.02
 type DocResult = dict
 
 
-embed_model = SentenceTransformer(EMBED_MODEL)
+embed_model = SentenceTransformer(EMBED_MODEL, local_files_only=True)
 chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
 collection = chroma_client.get_collection(CHROMA_COLLECTION)
 
