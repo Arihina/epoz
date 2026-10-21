@@ -4,16 +4,14 @@ import re
 import numpy as np
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
-import chromadb
+from qdrant_client import QdrantClient, models
 
 from app.core.config import settings
 
 
-CHROMA_PATH = "./chroma_db"
-CHROMA_COLLECTION = "rag_docs_hybrid"
+QDRANT_URL = settings.qdrant_url
+QDRANT_COLLECTION = "rag_docs_hybrid"
 EMBED_MODEL = settings.EMBED_MODEL
-
-QUERY_PREFIX = "query: "
 
 RETRIEVAL_THRESHOLD = 0.35
 RETRIEVAL_TOP_K = 10
@@ -26,19 +24,17 @@ CHUNK_TYPE_BOOST: dict[str, float] = {
     "heading": -0.05,
 }
 
-
 JSON_SCORE_BOOST = 0.02
-
 
 type DocResult = dict
 
 
 embed_model = SentenceTransformer(EMBED_MODEL, local_files_only=True)
-chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
-collection = chroma_client.get_collection(CHROMA_COLLECTION)
+qdrant = QdrantClient(url=QDRANT_URL)
 
 documents: list[str] = []
 metadatas: list[dict] = []
+doc_ids: list[str] = []
 bm25: BM25Okapi | None = None
 
 
@@ -54,19 +50,32 @@ def _enrich_text(text: str, meta: dict) -> str:
 
 
 def _init_bm25() -> None:
-    global documents, metadatas, bm25
+    global documents, metadatas, doc_ids, bm25
     try:
-        result = collection.get(include=["documents", "metadatas"])
-        if result and result["documents"]:
-            documents = result["documents"]
-            metadatas = result["metadatas"]
-            print(
-                f"[retrieval] Загружено {len(documents)} документов из ChromaDB")
-        else:
-            print("[retrieval] Коллекция пуста")
+        documents, metadatas, doc_ids = [], [], []
+        offset = None
+        while True:
+            records, offset = qdrant.scroll(
+                collection_name=QDRANT_COLLECTION,
+                limit=512,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for rec in records:
+                payload = rec.payload or {}
+                text = payload.get("text", "")
+                if not text:
+                    continue
+                doc_ids.append(rec.id)
+                documents.append(text)
+                metadatas.append(payload)
+            if offset is None:
+                break
+        print(f"[retrieval] Загружено {len(documents)} документов из Qdrant")
     except Exception as exc:
-        print(f"[retrieval] Ошибка загрузки из ChromaDB: {exc}")
-        documents, metadatas = [], []
+        print(f"[retrieval] Ошибка загрузки из Qdrant: {exc}")
+        documents, metadatas, doc_ids = [], [], []
 
     if documents:
         enriched = [_enrich_text(doc, meta)
@@ -80,14 +89,6 @@ def _init_bm25() -> None:
 
 
 _init_bm25()
-
-
-def _doc_key(meta: dict, fallback_idx: int) -> tuple:
-    return (
-        meta.get("source", "unknown"),
-        meta.get("anchor") or meta.get("chunk_id") or str(fallback_idx),
-        meta.get("source_format", ""),
-    )
 
 
 def _chunk_score_boost(meta: dict) -> float:
@@ -130,6 +131,19 @@ def _deduplicate(results: list[DocResult]) -> list[DocResult]:
     return kept
 
 
+def _to_result(chunk_id, text: str, meta: dict, score: float) -> DocResult:
+    return {
+        "text":          text,
+        "source":        meta.get("source", "unknown"),
+        "chunk_id":      chunk_id,
+        "score":         score,
+        "source_format": meta.get("source_format", ""),
+        "chunk_type":    meta.get("chunk_type", ""),
+        "section":       meta.get("section", ""),
+        "_meta":         meta,
+    }
+
+
 def _bm25_search(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
     if bm25 is None or not documents:
         return []
@@ -144,55 +158,38 @@ def _bm25_search(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
         if score <= 0:
             continue
         meta = metadatas[idx] if idx < len(metadatas) else {}
-        results.append({
-            "text":          documents[idx],
-            "source":        meta.get("source", "unknown"),
-            "chunk_id":      _doc_key(meta, int(idx)),
-            "score":         score,
-            "source_format": meta.get("source_format", ""),
-            "chunk_type":    meta.get("chunk_type", ""),
-            "section":       meta.get("section", ""),
-            "_meta":         meta,
-        })
+        results.append(_to_result(doc_ids[idx], documents[idx], meta, score))
     return results
 
 
 def _vector_search(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
     try:
         embedding = embed_model.encode(
-            [QUERY_PREFIX + query],
+            [query],
             convert_to_numpy=True,
             normalize_embeddings=True,
         )[0].tolist()
 
-        raw = collection.query(
-            query_embeddings=[embedding],
-            n_results=top_k * 2,
-            include=["documents", "metadatas", "distances"],
+        raw = qdrant.query_points(
+            collection_name=QDRANT_COLLECTION,
+            query=embedding,
+            using="dense",
+            limit=top_k * 2,
+            with_payload=True,
         )
 
         results: list[DocResult] = []
-        if raw["documents"] and raw["documents"][0]:
-            for i, doc in enumerate(raw["documents"][0]):
-                score = 1.0 - float(raw["distances"][0][i])
-                if score < RETRIEVAL_THRESHOLD:
-                    continue
-                meta = (raw["metadatas"][0][i] or {}
-                        ) if raw["metadatas"] else {}
-                results.append({
-                    "text":          doc,
-                    "source":        meta.get("source", "unknown"),
-                    "chunk_id":      _doc_key(meta, i),
-                    "score":         score,
-                    "source_format": meta.get("source_format", ""),
-                    "chunk_type":    meta.get("chunk_type", ""),
-                    "section":       meta.get("section", ""),
-                    "_meta":         meta,
-                })
+        for point in raw.points:
+            score = float(point.score)
+            if score < RETRIEVAL_THRESHOLD:
+                continue
+            meta = point.payload or {}
+            results.append(_to_result(
+                point.id, meta.get("text", ""), meta, score))
         return results
 
     except Exception as exc:
-        print(f"[retrieval] ChromaDB query error: {exc}")
+        print(f"[retrieval] Qdrant query error: {exc}")
         return []
 
 
@@ -201,7 +198,7 @@ def _rrf_merge(
     bm25_results:   list[DocResult],
     top_k:          int,
 ) -> list[DocResult]:
-    merged: dict[tuple, DocResult] = {}
+    merged: dict[str, DocResult] = {}
 
     for rank, r in enumerate(vector_results):
         key = r["chunk_id"]

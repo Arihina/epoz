@@ -11,5 +11,14 @@ services:
     ports:
       - "5433:5432"
 
+  qdrant:
+    image: qdrant/qdrant:v1.19.1
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      - "6336:6333"
+
 volumes:
   postgres_data:
+  qdrant_data:

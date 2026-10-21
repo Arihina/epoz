@@ -1,5 +1,5 @@
 """
-Просмотр чанков по документам в ChromaDB.
+Просмотр чанков по документам в Qdrant.
 
 Использование:
     # список всех документов
@@ -20,22 +20,40 @@
 import argparse
 from collections import defaultdict
 
-import chromadb
+from qdrant_client import QdrantClient
 
-CHROMA_PATH = "./chroma_db"
-CHROMA_COLLECTION = "rag_docs_hybrid"
+QDRANT_URL = "http://localhost:6336"
+QDRANT_COLLECTION = "rag_docs_hybrid"
 PREVIEW_LEN = 200
 
 
-def list_sources(collection) -> None:
-    result = collection.get(include=["metadatas"])
-    if not result["metadatas"]:
+def _load(client):
+    records = []
+    offset = None
+    while True:
+        batch, offset = client.scroll(
+            collection_name=QDRANT_COLLECTION,
+            limit=512,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+        records.extend(batch)
+        if offset is None:
+            break
+    return [(r.payload or {}, (r.payload or {}).get("text", ""))
+            for r in records]
+
+
+def list_sources(client) -> None:
+    items = _load(client)
+    if not items:
         print("Коллекция пуста.")
         return
 
     stats: dict[str, dict] = defaultdict(
         lambda: {"total": 0, "heading": 0, "paragraph": 0, "table": 0})
-    for meta in result["metadatas"]:
+    for meta, _ in items:
         src = meta.get("source", "unknown")
         ctype = meta.get("chunk_type", "unknown")
         stats[src]["total"] += 1
@@ -52,28 +70,20 @@ def list_sources(collection) -> None:
     print(f"\nИтого документов: {len(stats)}")
 
 
-def show_chunks(collection, source: str, chunk_type: str | None, full: bool) -> None:
-    where = {"source": source}
-    if chunk_type:
-        where = {"$and": [{"source": source}, {"chunk_type": chunk_type}]}
+def show_chunks(client, source: str, chunk_type: str | None, full: bool) -> None:
+    items = _load(client)
+    docs = [(meta, text) for meta, text in items
+            if meta.get("source") == source
+            and (chunk_type is None or meta.get("chunk_type") == chunk_type)]
 
-    result = collection.get(
-        where=where,
-        include=["documents", "metadatas"],
-    )
-
-    if not result["documents"]:
+    if not docs:
         print(f"Чанков не найдено для source='{source}'" +
               (f", chunk_type='{chunk_type}'" if chunk_type else ""))
         return
 
-    docs = result["documents"]
-    metadatas = result["metadatas"]
-
-    # группируем по chunk_type для удобного вывода
     grouped: dict[str, list] = defaultdict(list)
-    for doc, meta in zip(docs, metadatas):
-        grouped[meta.get("chunk_type", "unknown")].append((doc, meta))
+    for meta, text in docs:
+        grouped[meta.get("chunk_type", "unknown")].append((text, meta))
 
     total = len(docs)
     print(f"\nДокумент: {source}  |  чанков: {total}" +
@@ -86,11 +96,11 @@ def show_chunks(collection, source: str, chunk_type: str | None, full: bool) -> 
     for ctype in all_types:
         if ctype not in grouped:
             continue
-        items = grouped[ctype]
-        print(f"\n[{ctype.upper()}] — {len(items)} шт.")
+        items_of_type = grouped[ctype]
+        print(f"\n[{ctype.upper()}] — {len(items_of_type)} шт.")
         print("─" * 80)
 
-        for i, (text, meta) in enumerate(items, 1):
+        for i, (text, meta) in enumerate(items_of_type, 1):
             section = meta.get("section", "")
             anchor = meta.get("anchor", "")
 
@@ -103,7 +113,6 @@ def show_chunks(collection, source: str, chunk_type: str | None, full: bool) -> 
             print(f"  текст   :")
 
             if full:
-                # с отступом для читаемости
                 for line in text.splitlines():
                     print(f"    {line}")
             else:
@@ -113,25 +122,24 @@ def show_chunks(collection, source: str, chunk_type: str | None, full: bool) -> 
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Просмотр чанков в ChromaDB")
+    parser = argparse.ArgumentParser(description="Просмотр чанков в Qdrant")
     parser.add_argument("--source", default=None,
-                        help="Имя документа (значение поля source в метаданных)")
+                        help="Имя документа (значение поля source в payload)")
     parser.add_argument("--type",   default=None,
                         choices=["heading", "paragraph", "table"],
                         help="Фильтр по типу чанка")
     parser.add_argument("--full",   action="store_true",
                         help="Показывать полный текст без обрезки")
-    parser.add_argument("--chroma_dir",  default=CHROMA_PATH)
-    parser.add_argument("--collection",  default=CHROMA_COLLECTION)
+    parser.add_argument("--qdrant_url", default=QDRANT_URL)
+    parser.add_argument("--collection", default=QDRANT_COLLECTION)
     args = parser.parse_args()
 
-    client = chromadb.PersistentClient(path=args.chroma_dir)
-    collection = client.get_collection(args.collection)
+    client = QdrantClient(url=args.qdrant_url)
 
     if args.source is None:
-        list_sources(collection)
+        list_sources(client)
     else:
-        show_chunks(collection, args.source, args.type, args.full)
+        show_chunks(client, args.source, args.type, args.full)
 
 
 if __name__ == "__main__":

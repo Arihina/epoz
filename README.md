@@ -25,14 +25,14 @@ source venv/bin/activate
 pip3 install -r requirements.txt
 ```
 ```
+sudo docker compose up -d
+```
+```
 python3 create_collection_hybrid.py \
     --input_dir ./EPoZ_data \
-    --chroma_dir ./chroma_db \
+    --qdrant_url http://localhost:6336 \
     --collection rag_docs_hybrid \
     --reset
-```
-```
-sudo docker compose up -d
 ```
 ```
 alembic upgrade head
@@ -83,6 +83,12 @@ DB_PORT=5433
 DB_USER=postgres
 DB_PASSWORD=postgres
 DB_NAME=rag_db
+```
+
+Qdrant поднимается тем же `docker compose` (порт `6336`). Адрес задаётся в `.env`:
+```env
+QDRANT_HOST=localhost
+QDRANT_PORT=6336
 ```
 
 Миграции управляются через Alembic. Применить:

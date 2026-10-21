@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     EMBED_MODEL: str
     OLLAMA_MODEL: str
 
+    QDRANT_HOST: str = "localhost"
+    QDRANT_PORT: int = 6336
+
     HISTORY_LIMIT: int = 10
 
     @property
@@ -19,6 +22,10 @@ class Settings(BaseSettings):
             f"postgresql+psycopg://{self.DB_USER}:{self.DB_PASSWORD}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
         )
+
+    @property
+    def qdrant_url(self) -> str:
+        return f"http://{self.QDRANT_HOST}:{self.QDRANT_PORT}"
 
     model_config = SettingsConfigDict(env_file=".env")
 

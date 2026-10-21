@@ -1,5 +1,5 @@
 """
-Индексирует результаты парсинга MinerU в ChromaDB.
+Индексирует результаты парсинга MinerU в Qdrant.
 Использует оба источника из каждой папки:
   - *model.json / *content_list_v2.json / *content_list.json — структурный парсинг
   - *.md — полная конвертация документа
@@ -17,13 +17,13 @@
                 *.md                   ← MD-источник
 
 Использование:
-    pip install chromadb sentence-transformers
+    pip install qdrant-client sentence-transformers
 
     python create_collection_hybrid.py \
         --input_dir ./mineru_output \
-        --chroma_dir ./chroma_db \
-        [--collection rag_docs_v2] \
-        [--model all-MiniLM-L6-v2] \
+        --qdrant_url http://localhost:6336 \
+        [--collection rag_docs_hybrid] \
+        [--model BAAI/bge-m3] \
         [--chunk_size 800] \
         [--chunk_overlap 80] \
         [--reset]
@@ -31,23 +31,28 @@
 
 import argparse
 import json
+import os
 import re
 import sys
 import uuid
 from pathlib import Path
 from typing import Generator
 
-import chromadb
-from chromadb.config import Settings
+from qdrant_client import QdrantClient, models
 from sentence_transformers import SentenceTransformer
 
 
-DEFAULT_MODEL = "intfloat/multilingual-e5-small"
+DEFAULT_MODEL = "BAAI/bge-m3"
 DEFAULT_CHUNK_SIZE = 800
 DEFAULT_CHUNK_OVERLAP = 80
 
-# all-MiniLM-L6-v2 не требует префиксов
+# BGE-M3 не требует префиксов query:/passage: — эмбеддим текст как есть.
 PASSAGE_PREFIX = ""
+
+_DEFAULT_QDRANT_URL = (
+    f"http://{os.getenv('QDRANT_HOST', 'localhost')}"
+    f":{os.getenv('QDRANT_PORT', '6336')}"
+)
 
 Block = dict  # {"type": str, "level": int, "text": str, "anchor": str}
 
@@ -388,7 +393,8 @@ def build_chunks(
 
 
 def _add_to_collection(
-    collection,
+    client,
+    collection_name: str,
     chunks:      list[dict],
     source_name: str,
     embedder:    SentenceTransformer,
@@ -397,17 +403,6 @@ def _add_to_collection(
         return 0
 
     texts = [PASSAGE_PREFIX + c["text"] for c in chunks]
-    metadatas = [
-        {
-            "source":        source_name,
-            "section":       c["section"],
-            "anchor":        c["anchor"],
-            "chunk_type":    c["chunk_type"],
-            "source_format": c["source_format"],
-        }
-        for c in chunks
-    ]
-    ids = [str(uuid.uuid4()) for _ in chunks]
 
     embeddings = []
     for i in range(0, len(texts), 64):
@@ -416,18 +411,29 @@ def _add_to_collection(
             embedder.encode(batch, normalize_embeddings=True).tolist()
         )
 
-    collection.add(
-        ids=ids,
-        embeddings=embeddings,
-        documents=[c["text"] for c in chunks],
-        metadatas=metadatas,
-    )
+    points = [
+        models.PointStruct(
+            id=str(uuid.uuid4()),
+            vector={"dense": emb},
+            payload={
+                "text":          c["text"],
+                "source":        source_name,
+                "section":       c["section"],
+                "anchor":        c["anchor"],
+                "chunk_type":    c["chunk_type"],
+                "source_format": c["source_format"],
+            },
+        )
+        for c, emb in zip(chunks, embeddings)
+    ]
+
+    client.upsert(collection_name=collection_name, points=points)
     return len(chunks)
 
 
 def index_documents(
     input_dir:     Path,
-    chroma_dir:    Path,
+    qdrant_url:    str,
     collection_name: str,
     model_name:    str,
     chunk_size:    int,
@@ -437,19 +443,22 @@ def index_documents(
     print(f"Загрузка модели: {model_name}")
     embedder = SentenceTransformer(model_name)
 
-    client = chromadb.PersistentClient(
-        path=str(chroma_dir),
-        settings=Settings(anonymized_telemetry=False),
-    )
+    client = QdrantClient(url=qdrant_url)
 
-    if reset and collection_name in [c.name for c in client.list_collections()]:
+    if reset and client.collection_exists(collection_name):
         client.delete_collection(collection_name)
         print(f"Коллекция '{collection_name}' удалена (--reset)")
 
-    collection = client.get_or_create_collection(
-        name=collection_name,
-        metadata={"hnsw:space": "cosine"},
-    )
+    if not client.collection_exists(collection_name):
+        client.create_collection(
+            collection_name=collection_name,
+            vectors_config={
+                "dense": models.VectorParams(
+                    size=embedder.get_sentence_embedding_dimension(),
+                    distance=models.Distance.COSINE,
+                ),
+            },
+        )
 
     doc_dirs = sorted([
         d for d in input_dir.iterdir()
@@ -477,7 +486,7 @@ def index_documents(
             json_chunks = list(build_chunks(
                 json_blocks, chunk_size, chunk_overlap, "json"))
             added = _add_to_collection(
-                collection, json_chunks, source_name, embedder)
+                client, collection_name, json_chunks, source_name, embedder)
             total_json += added
             print(f"  JSON → чанков добавлено: {added}")
         else:
@@ -491,7 +500,7 @@ def index_documents(
             md_chunks = list(build_chunks(
                 md_blocks, chunk_size, chunk_overlap, "md"))
             added = _add_to_collection(
-                collection, md_chunks, source_name, embedder)
+                client, collection_name, md_chunks, source_name, embedder)
             total_md += added
             print(f"  MD   → чанков добавлено: {added}")
         else:
@@ -507,10 +516,10 @@ def index_documents(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Индексация MinerU (JSON + MD) → ChromaDB")
+        description="Индексация MinerU (JSON + MD) → Qdrant")
     parser.add_argument("--input_dir",     required=True,  type=Path)
-    parser.add_argument("--chroma_dir",    required=True,  type=Path)
-    parser.add_argument("--collection",    default="rag_docs_hibrid")
+    parser.add_argument("--qdrant_url",    default=_DEFAULT_QDRANT_URL)
+    parser.add_argument("--collection",    default="rag_docs_hybrid")
     parser.add_argument("--model",         default=DEFAULT_MODEL)
     parser.add_argument("--chunk_size",    type=int,
                         default=DEFAULT_CHUNK_SIZE)
@@ -522,7 +531,7 @@ def main() -> None:
     args = parser.parse_args()
     index_documents(
         input_dir=args.input_dir,
-        chroma_dir=args.chroma_dir,
+        qdrant_url=args.qdrant_url,
         collection_name=args.collection,
         model_name=args.model,
         chunk_size=args.chunk_size,

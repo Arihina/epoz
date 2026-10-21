@@ -1,7 +1,7 @@
 /venv
 *.pem
 test.py
-/chroma_db
+/qdrant_storage
 chunks_*.txt
 input.docx
 output.md

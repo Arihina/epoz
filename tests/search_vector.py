@@ -1,7 +1,7 @@
 """
 search_vector.py
 ────────────────
-Семантический (векторный) поиск по базе знаний.
+Семантический (векторный) поиск по базе знаний (Qdrant).
 
 Использование:
     python search_vector.py "порядок создания закупочной комиссии"
@@ -21,13 +21,12 @@ search_vector.py
 
 import argparse
 
-import chromadb
+from qdrant_client import QdrantClient, models
 from sentence_transformers import SentenceTransformer
 
-CHROMA_PATH = "../chroma_db"
-CHROMA_COLLECTION = "rag_docs_hybrid"
-EMBED_MODEL = "intfloat/multilingual-e5-small"
-QUERY_PREFIX = "query: "
+QDRANT_URL = "http://localhost:6336"
+QDRANT_COLLECTION = "rag_docs_hybrid"
+EMBED_MODEL = "BAAI/bge-m3"
 DEFAULT_TOP_K = 5
 DEFAULT_THRESHOLD = 0.0    # без порога по умолчанию — показываем всё
 PREVIEW_LEN = 300
@@ -35,7 +34,7 @@ PREVIEW_LEN = 300
 
 def search(
     query:      str,
-    collection,
+    client,
     embedder:   SentenceTransformer,
     top_k:      int,
     threshold:  float,
@@ -43,43 +42,36 @@ def search(
     chunk_type: str | None,
 ) -> None:
     embedding = embedder.encode(
-        [QUERY_PREFIX + query],
+        [query],
         convert_to_numpy=True,
         normalize_embeddings=True,
     )[0].tolist()
 
-    filters = []
+    conditions = []
     if source:
-        filters.append({"source": source})
+        conditions.append(models.FieldCondition(
+            key="source", match=models.MatchValue(value=source)))
     if chunk_type:
-        filters.append({"chunk_type": chunk_type})
+        conditions.append(models.FieldCondition(
+            key="chunk_type", match=models.MatchValue(value=chunk_type)))
+    query_filter = models.Filter(must=conditions) if conditions else None
 
-    where = None
-    if len(filters) == 1:
-        where = filters[0]
-    elif len(filters) > 1:
-        where = {"$and": filters}
-
-    kwargs = dict(
-        query_embeddings=[embedding],
-        n_results=top_k,
-        include=["documents", "metadatas", "distances"],
+    raw = client.query_points(
+        collection_name=QDRANT_COLLECTION,
+        query=embedding,
+        using="dense",
+        limit=top_k,
+        query_filter=query_filter,
+        with_payload=True,
     )
-    if where:
-        kwargs["where"] = where
-
-    raw = collection.query(**kwargs)
-
-    if not raw["documents"] or not raw["documents"][0]:
-        print("Ничего не найдено.")
-        return
 
     results = []
-    for i, doc in enumerate(raw["documents"][0]):
-        score = 1.0 - float(raw["distances"][0][i])
+    for point in raw.points:
+        score = float(point.score)
         if score < threshold:
             continue
-        meta = raw["metadatas"][0][i] or {}
+        meta = point.payload or {}
+        doc = meta.get("text", "")
         results.append((score, doc, meta))
 
     if not results:
@@ -113,7 +105,7 @@ def search(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Векторный поиск по ChromaDB")
+    parser = argparse.ArgumentParser(description="Векторный поиск по Qdrant")
     parser.add_argument("query",                help="Поисковый запрос")
     parser.add_argument("--top",       type=int,   default=DEFAULT_TOP_K)
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD,
@@ -123,18 +115,17 @@ def main() -> None:
     parser.add_argument("--type",      default=None,
                         choices=["heading", "paragraph", "table"],
                         help="Фильтр по типу чанка")
-    parser.add_argument("--chroma_dir",  default=CHROMA_PATH)
-    parser.add_argument("--collection",  default=CHROMA_COLLECTION)
+    parser.add_argument("--qdrant_url", default=QDRANT_URL)
+    parser.add_argument("--collection", default=QDRANT_COLLECTION)
     args = parser.parse_args()
 
     print(f"Загрузка модели {EMBED_MODEL}...")
     embedder = SentenceTransformer(EMBED_MODEL)
-    client = chromadb.PersistentClient(path=args.chroma_dir)
-    collection = client.get_collection(args.collection)
+    client = QdrantClient(url=args.qdrant_url)
 
     search(
         query=args.query,
-        collection=collection,
+        client=client,
         embedder=embedder,
         top_k=args.top,
         threshold=args.threshold,

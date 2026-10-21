@@ -1,5 +1,5 @@
 """
-Поиск по ключевым словам (BM25) по базе знаний.
+Поиск по ключевым словам (BM25) по базе знаний (Qdrant).
 
 Использование:
     python search_keywords.py "закупочная комиссия состав"
@@ -23,10 +23,10 @@ from collections import defaultdict
 
 import numpy as np
 from rank_bm25 import BM25Okapi
-import chromadb
+from qdrant_client import QdrantClient
 
-CHROMA_PATH = "./chroma_db"
-CHROMA_COLLECTION = "rag_docs_hybrid"
+QDRANT_URL = "http://localhost:6336"
+QDRANT_COLLECTION = "rag_docs_hybrid"
 DEFAULT_TOP_K = 5
 PREVIEW_LEN = 300
 
@@ -61,7 +61,7 @@ def highlight(text: str, query_tokens: set[str], max_len: int = PREVIEW_LEN) -> 
     return " ".join(marked)
 
 
-def explain_scores(doc: str, query_tokens: list[str], bm25: BM25Okapi, doc_idx: int) -> None:
+def explain_scores(doc: str, query_tokens: list[str]) -> None:
     """Выводит вклад каждого токена запроса в итоговый score."""
     print("  вклад токенов:")
     doc_tokens = tokenize(doc)
@@ -70,38 +70,45 @@ def explain_scores(doc: str, query_tokens: list[str], bm25: BM25Okapi, doc_idx: 
         print(f"    «{token}» — встречается {tf} раз")
 
 
+def load_documents(client, source, chunk_type):
+    documents, metadatas = [], []
+    offset = None
+    while True:
+        records, offset = client.scroll(
+            collection_name=QDRANT_COLLECTION,
+            limit=512,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+        for rec in records:
+            payload = rec.payload or {}
+            if source and payload.get("source") != source:
+                continue
+            if chunk_type and payload.get("chunk_type") != chunk_type:
+                continue
+            text = payload.get("text", "")
+            if text:
+                documents.append(text)
+                metadatas.append(payload)
+        if offset is None:
+            break
+    return documents, metadatas
+
+
 def search(
     query:      str,
-    collection,
+    client,
     top_k:      int,
     source:     str | None,
     chunk_type: str | None,
     explain:    bool,
 ) -> None:
-    filters = []
-    if source:
-        filters.append({"source": source})
-    if chunk_type:
-        filters.append({"chunk_type": chunk_type})
+    documents, metadatas = load_documents(client, source, chunk_type)
 
-    where = None
-    if len(filters) == 1:
-        where = filters[0]
-    elif len(filters) > 1:
-        where = {"$and": filters}
-
-    get_kwargs = dict(include=["documents", "metadatas"])
-    if where:
-        get_kwargs["where"] = where
-
-    result = collection.get(**get_kwargs)
-
-    if not result["documents"]:
+    if not documents:
         print("Коллекция пуста или фильтр не дал результатов.")
         return
-
-    documents = result["documents"]
-    metadatas = result["metadatas"]
 
     tokenized = [tokenize(doc) for doc in documents]
     bm25 = BM25Okapi(tokenized)
@@ -147,7 +154,7 @@ def search(
         print(f"  длина    : {len(doc)} символов")
 
         if explain:
-            explain_scores(doc, query_tokens, bm25, idx)
+            explain_scores(doc, query_tokens)
 
         print(f"  текст    :")
         print(f"    {highlight(doc, query_set)}")
@@ -166,7 +173,7 @@ def search(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="BM25 поиск по ChromaDB")
+    parser = argparse.ArgumentParser(description="BM25 поиск по Qdrant")
     parser.add_argument(
         "query",               help="Поисковый запрос (ключевые слова)")
     parser.add_argument("--top",      type=int, default=DEFAULT_TOP_K)
@@ -177,16 +184,15 @@ def main() -> None:
                         help="Фильтр по типу чанка")
     parser.add_argument("--explain",  action="store_true",
                         help="Показать вклад каждого токена запроса")
-    parser.add_argument("--chroma_dir",  default=CHROMA_PATH)
-    parser.add_argument("--collection",  default=CHROMA_COLLECTION)
+    parser.add_argument("--qdrant_url", default=QDRANT_URL)
+    parser.add_argument("--collection", default=QDRANT_COLLECTION)
     args = parser.parse_args()
 
-    client = chromadb.PersistentClient(path=args.chroma_dir)
-    collection = client.get_collection(args.collection)
+    client = QdrantClient(url=args.qdrant_url)
 
     search(
         query=args.query,
-        collection=collection,
+        client=client,
         top_k=args.top,
         source=args.source,
         chunk_type=args.type,
