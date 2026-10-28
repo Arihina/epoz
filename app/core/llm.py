@@ -6,7 +6,7 @@ from app.core.retrieval import retrieve, lookup_glossary, expand_query, DocResul
 from app.core.config import settings
 
 
-OLLAMA_HOST = "http://localhost:11434"
+OLLAMA_HOST = settings.OLLAMA_HOST
 OLLAMA_MODEL = settings.OLLAMA_MODEL
 
 

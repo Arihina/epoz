@@ -10,6 +10,7 @@ class Settings(BaseSettings):
 
     EMBED_MODEL: str
     OLLAMA_MODEL: str
+    OLLAMA_HOST: str = "http://localhost:11434"
 
     EMBED_DEVICE: str | None = None
     EMBED_LOCAL_FILES_ONLY: bool = True
