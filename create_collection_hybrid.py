@@ -1,31 +1,28 @@
 """
-Индексирует результаты парсинга MinerU в Qdrant.
-Использует оба источника из каждой папки:
-  - *model.json / *content_list_v2.json / *content_list.json — структурный парсинг
-  - *.md — полная конвертация документа
+Индексирует результаты парсинга MinerU в Qdrant по новой схеме разбиения.
 
-Чанки из обоих источников попадают в одну коллекцию;
-поле source_format=json|md позволяет различать их при поиске.
+Источник (по приоритету):
+  - *content_list_v2.json  ← структурный парсинг (основной)
+  - *model.json            ← запасной
+  - *content_list.json     ← запасной (плоский)
 
-Структура входных данных:
-    <input_dir>/
-        <doc_name>/
-            office/
-                *model.json            ← приоритетный JSON-источник
-                *content_list_v2.json  ← запасной
-                *content_list.json     ← запасной (плоский)
-                *.md                   ← MD-источник
+Единицы хранения (unit_type):
+  - glossary — аббревиатуры и термины («НМЦ – начальная максимальная цена…»),
+               с отдельным полем term для точного поиска;
+  - clause   — нумерованные пункты норм и обычные абзацы;
+  - table    — строки таблиц (с повторённой шапкой).
+
+Заголовки разделов не индексируются отдельно — попадают в поле section.
+Оглавление («СОДЕРЖАНИЕ») и колонтитулы/номера страниц отбрасываются.
 
 Использование:
-    pip install qdrant-client sentence-transformers
+    pip install qdrant-client sentence-transformers beautifulsoup4
 
     python create_collection_hybrid.py \
-        --input_dir ./mineru_output \
+        --input_dir ./EPoZ_data \
         --qdrant_url http://localhost:6336 \
         [--collection rag_docs_hybrid] \
         [--model BAAI/bge-m3] \
-        [--chunk_size 800] \
-        [--chunk_overlap 80] \
         [--reset]
 """
 
@@ -36,15 +33,13 @@ import re
 import sys
 import uuid
 from pathlib import Path
-from typing import Generator
 
+from bs4 import BeautifulSoup
 from qdrant_client import QdrantClient, models
 from sentence_transformers import SentenceTransformer
 
 
 DEFAULT_MODEL = "BAAI/bge-m3"
-DEFAULT_CHUNK_SIZE = 800
-DEFAULT_CHUNK_OVERLAP = 80
 
 # BGE-M3 не требует префиксов query:/passage: — эмбеддим текст как есть.
 PASSAGE_PREFIX = ""
@@ -54,19 +49,22 @@ _DEFAULT_QDRANT_URL = (
     f":{os.getenv('QDRANT_PORT', '6336')}"
 )
 
-Block = dict  # {"type": str, "level": int, "text": str, "anchor": str}
+# Семантика title-уровней MinerU: 1..3 — заголовки разделов,
+# 4..7 — пункты норм, 10 — колонтитулы/номера страниц.
+HEADING_MAX_LEVEL = 3
+CLAUSE_MIN_LEVEL = 4
+NOISE_LEVEL = 10
+
+TOC_TITLE = "СОДЕРЖАНИЕ"
+GLOSSARY_MARKERS = ("СОКРАЩЕНИЯ", "ТЕРМИН")
+
+# Точек в одном upsert — чтобы не превысить лимит размера запроса Qdrant (32 МБ).
+UPLOAD_BATCH_SIZE = 256
 
 
 def _find_by_suffix(directory: Path, suffix: str) -> "Path | None":
     for f in sorted(directory.iterdir()):
         if f.is_file() and f.name.endswith(suffix):
-            return f
-    return None
-
-
-def _find_by_extension(directory: Path, ext: str) -> "Path | None":
-    for f in sorted(directory.iterdir()):
-        if f.is_file() and f.suffix.lower() == ext:
             return f
     return None
 
@@ -87,87 +85,147 @@ def _split_long_text(text: str, size: int, overlap: int) -> list[str]:
     return chunks or [text]
 
 
-# JSON-парсеры 
-
 def _strip_xml_tags(text: str) -> str:
     return re.sub(r"<[^>]+>", "", text).strip()
 
 
-def _extract_text_model(item: dict) -> str:
-    raw = item.get("content", "")
-    return _strip_xml_tags(raw) if isinstance(raw, str) else ""
+# Таблицы
+
+def _table_grid_from_html(html: str) -> list[list[str]]:
+    soup = BeautifulSoup(html, "html.parser")
+    table = soup.find("table")
+    if table is None:
+        return []
+    grid = []
+    for tr in table.find_all("tr"):
+        cells = [c.get_text(" ", strip=True) for c in tr.find_all(["td", "th"])]
+        cells = [c for c in cells if c]
+        if cells:
+            grid.append(cells)
+    return grid
 
 
-def _extract_text_v2(item: dict) -> str:
-    itype = item.get("type", "")
-    content = item.get("content", {})
-    if itype == "paragraph":
-        parts = content.get("paragraph_content", [])
-    elif itype == "title":
-        parts = content.get("title_content", [])
-    elif itype == "table":
-        rows = content.get("table_content", [])
+def _table_grid_from_content(content: dict) -> list[list[str]]:
+    grid = []
+    for row in content.get("table_content", []):
         cells = []
-        for row in rows:
-            for cell in row:
-                for part in cell.get("paragraph_content", []):
-                    cells.append(part.get("content", "").strip())
-        return " | ".join(c for c in cells if c)
-    else:
-        return ""
-    return "".join(p.get("content", "") for p in parts).strip()
+        for cell in row:
+            txt = "".join(p.get("content", "")
+                          for p in cell.get("paragraph_content", []))
+            cells.append(txt.strip())
+        grid.append([c for c in cells if c])
+    return grid
 
 
-def _extract_text_flat(item: dict) -> str:
-    return item.get("text", "").strip()
+def _table_units(grid: list[list[str]], section: str, anchor: str) -> list[dict]:
+    if not grid:
+        return []
+    if len(grid) == 1:
+        return [{"text": " | ".join(grid[0]), "section": section,
+                 "anchor": anchor, "unit_type": "table"}]
+    header = " | ".join(grid[0])
+    units = []
+    for row in grid[1:]:
+        units.append({"text": header + "\n" + " | ".join(row),
+                      "section": section, "anchor": anchor, "unit_type": "table"})
+    return units
 
 
-def parse_model_json(path: Path) -> list[Block]:
-    data, blocks = json.loads(path.read_text(encoding="utf-8")), []
-    for page in data:
-        if not isinstance(page, list):
-            continue
-        for item in page:
-            text = _extract_text_model(item)
-            if text:
-                blocks.append({"type": item.get("type", "text"),
-                               "level": item.get("level", 0),
-                               "text": text, "anchor": item.get("anchor", "")})
-    return blocks
+# Парсеры JSON 
+
+def _v2_title_text(content: dict) -> str:
+    return "".join(p.get("content", "")
+                   for p in content.get("title_content", [])).strip()
 
 
-def parse_content_list_v2(path: Path) -> list[Block]:
-    data, blocks = json.loads(path.read_text(encoding="utf-8")), []
-    for page in data:
-        if not isinstance(page, list):
-            continue
-        for item in page:
-            text = _extract_text_v2(item)
-            if not text:
-                continue
-            itype = item.get("type", "text")
-            level = item.get("content", {}).get(
-                "level", 0) if itype == "title" else 0
-            blocks.append({"type": itype, "level": level,
-                           "text": text, "anchor": item.get("anchor", "")})
-    return blocks
+def _v2_paragraph_text(content: dict) -> str:
+    return "".join(p.get("content", "")
+                   for p in content.get("paragraph_content", [])).strip()
 
 
-def parse_content_list_flat(path: Path) -> list[Block]:
-    data, blocks = json.loads(path.read_text(encoding="utf-8")), []
-    for item in data:
-        text = _extract_text_flat(item)
+def _v2_list_items(content: dict) -> list[str]:
+    out = []
+    for li in content.get("list_items", []):
+        parts = li.get("item_content", [])
+        text = " ".join((p.get("content") or "").strip()
+                        for p in parts if (p.get("content") or "").strip())
+        text = text.strip()
         if text:
-            blocks.append({"type": item.get("type", "text"), "level": 0,
-                           "text": text, "anchor": item.get("anchor", "")})
+            out.append(text)
+    return out
+
+
+def parse_content_list_v2(path: Path) -> list[dict]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    blocks: list[dict] = []
+    for page in data:
+        if not isinstance(page, list):
+            continue
+        for item in page:
+            itype = item.get("type", "")
+            content = item.get("content", {})
+            anchor = item.get("anchor", "")
+            if itype == "title":
+                text = _v2_title_text(content)
+                if text:
+                    blocks.append({"kind": "title", "level": content.get("level", 0),
+                                   "text": text, "anchor": anchor})
+            elif itype == "paragraph":
+                text = _v2_paragraph_text(content)
+                if text:
+                    blocks.append({"kind": "text", "text": text, "anchor": anchor})
+            elif itype == "table":
+                grid = (_table_grid_from_html(content.get("html", ""))
+                        or _table_grid_from_content(content))
+                if grid:
+                    blocks.append({"kind": "table", "grid": grid, "anchor": anchor})
+            elif itype == "list":
+                items = _v2_list_items(content)
+                if items:
+                    blocks.append({"kind": "list", "items": items})
     return blocks
 
 
-def load_json_blocks(office_dir: Path) -> "tuple[list[Block], str] | tuple[None, None]":
-    """Возвращает (blocks, filename) или (None, None) если ничего не найдено."""
+def parse_model_json(path: Path) -> list[dict]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    blocks: list[dict] = []
+    for page in data:
+        if not isinstance(page, list):
+            continue
+        for item in page:
+            itype = item.get("type", "")
+            anchor = item.get("anchor", "")
+            if itype == "title":
+                text = _strip_xml_tags(item.get("content", ""))
+                if text:
+                    blocks.append({"kind": "title", "level": item.get("level", 0),
+                                   "text": text, "anchor": anchor})
+            elif itype in ("text", "paragraph"):
+                text = _strip_xml_tags(item.get("content", ""))
+                if text:
+                    blocks.append({"kind": "text", "text": text, "anchor": anchor})
+            elif itype == "table":
+                grid = _table_grid_from_html(item.get("content", ""))
+                if grid:
+                    blocks.append({"kind": "table", "grid": grid, "anchor": anchor})
+    return blocks
+
+
+def parse_content_list_flat(path: Path) -> list[dict]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    blocks: list[dict] = []
+    for item in data:
+        text = (item.get("text") or "").strip()
+        if text:
+            blocks.append({"kind": "text", "text": text,
+                           "anchor": item.get("anchor", "")})
+    return blocks
+
+
+def load_json_blocks(office_dir: Path) -> "tuple[list[dict], str] | tuple[None, None]":
     for suffix, parser in [
-        ("model.json",           parse_model_json),
         ("content_list_v2.json", parse_content_list_v2),
+        ("model.json",           parse_model_json),
         ("content_list.json",    parse_content_list_flat),
     ]:
         found = _find_by_suffix(office_dir, suffix)
@@ -175,234 +233,135 @@ def load_json_blocks(office_dir: Path) -> "tuple[list[Block], str] | tuple[None,
             return parser(found), found.name
     return None, None
 
-# MD-парсер
 
-_MD_HEADING = re.compile(r'^(#{1,10})\s+(.+)', re.MULTILINE)
+# Сборка юнитов 
 
-_MD_TABLE_ROW = re.compile(r'^\|.+\|', re.MULTILINE)
-
-_MD_TABLE_SEP = re.compile(r'^\|[-| :]+\|', re.MULTILINE)
-
-
-def _parse_md_table(lines: list[str]) -> str:
-    rows = []
-    for line in lines:
-        if _MD_TABLE_SEP.match(line.strip()):
-            continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        rows.append(" | ".join(c for c in cells if c))
-    return "\n".join(rows)
+def _is_page_noise(text: str, level: int) -> bool:
+    if level != NOISE_LEVEL:
+        return False
+    stripped = text.strip()
+    if re.fullmatch(r"\d+", stripped):       # номер страницы
+        return True
+    return bool(re.search(r"\t+\d+$", stripped))  # «Заголовок\t\t9»
 
 
-_MD_HEADING = re.compile(r'^(#{1,10})\s+(.+)', re.MULTILINE)
-_MD_TABLE_ROW = re.compile(r'^\|.+\|', re.MULTILINE)
-_MD_TABLE_SEP = re.compile(r'^\|[-| :]+\|', re.MULTILINE)
-
-_HTML_TABLE_OPEN  = re.compile(r'<table[\s>]', re.IGNORECASE)
-_HTML_TABLE_CLOSE = re.compile(r'</table>', re.IGNORECASE)
-
-
-def _parse_html_table(html: str) -> str:
-    def cell_text(cell_html: str) -> str:
-        text = re.sub(r'<br\s*/?>', ' ', cell_html, flags=re.IGNORECASE)
-        text = re.sub(r'<[^>]+>', '', text)
-        return re.sub(r'\s+', ' ', text).strip()
-
-    rows_text = []
-    for tr in re.split(r'<tr[\s>]', html, flags=re.IGNORECASE):
-        cells = re.findall(
-            r'<t[dh][^>]*>(.*?)</t[dh]>',
-            tr, flags=re.IGNORECASE | re.DOTALL
-        )
-        row_parts = [cell_text(c) for c in cells if cell_text(c)]
-        if row_parts:
-            rows_text.append(' | '.join(row_parts))
-
-    return '\n'.join(rows_text)
+def _split_term(text: str) -> "tuple[str, str]":
+    for sep in ("–", "—", "-"):
+        if sep in text:
+            term, _, definition = text.partition(sep)
+            term, definition = term.strip(), definition.strip()
+            if term and definition and len(term.split()) <= 6:
+                return term, definition
+    return "", text
 
 
-def _parse_md_table(lines: list[str]) -> str:
-    rows = []
-    for line in lines:
-        if _MD_TABLE_SEP.match(line.strip()):
-            continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        rows.append(" | ".join(c for c in cells if c))
-    return "\n".join(rows)
+def _is_glossary_list(items: list[str]) -> bool:
+    if not items:
+        return False
+    with_term = sum(1 for t in items if _split_term(t)[0])
+    return with_term >= max(1, len(items) // 2)
 
 
-def parse_md_blocks(path: Path) -> list[Block]:
-    """
-    Парсит MD-файл в список блоков.
-    Стратегия:
-      - <table>...</table> (HTML) → block type=table
-      - строки '# ...' → block type=title, level=глубина '#'
-      - блоки таблиц (строки начинающиеся с '|') → block type=table
-      - всё остальное → block type=text
-    """
-    text = path.read_text(encoding="utf-8")
-
-    html_tables: list[str] = []
-    PLACEHOLDER = "\x00TABLE{}\x00"
-
-    def _replace_table(m: re.Match) -> str:
-        html_tables.append(m.group(0))
-        return PLACEHOLDER.format(len(html_tables) - 1) + "\n"
-
-    text_no_tables = re.sub(
-        r'<table[\s>].*?</table>',
-        _replace_table,
-        text,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-
-    lines = text_no_tables.splitlines()
-    blocks: list[Block] = []
-
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-
-        ph_match = re.match(r'\x00TABLE(\d+)\x00', line)
-        if ph_match:
-            idx = int(ph_match.group(1))
-            table_text = _parse_html_table(html_tables[idx])
-            if table_text.strip():
-                blocks.append({"type": "table", "level": 0,
-                               "text": table_text, "anchor": ""})
-            i += 1
-            continue
-
-        m = _MD_HEADING.match(line)
-        if m:
-            level = len(m.group(1))
-            heading = re.sub(r'[*_`]', '', m.group(2)).strip()
-            if heading:
-                blocks.append({"type": "title", "level": level,
-                               "text": heading, "anchor": ""})
-            i += 1
-            continue
-
-        if _MD_TABLE_ROW.match(line.strip()):
-            table_lines = []
-            while i < len(lines) and (
-                _MD_TABLE_ROW.match(lines[i].strip()) or
-                _MD_TABLE_SEP.match(lines[i].strip())
-            ):
-                table_lines.append(lines[i])
-                i += 1
-            table_text = _parse_md_table(table_lines)
-            if table_text.strip():
-                blocks.append({"type": "table", "level": 0,
-                               "text": table_text, "anchor": ""})
-            continue
-
-        para_lines = []
-        while i < len(lines):
-            l = lines[i]
-            if (_MD_HEADING.match(l) or _MD_TABLE_ROW.match(l.strip())
-                    or re.match(r'\x00TABLE\d+\x00', l)):
-                break
-            stripped = re.sub(r'[*_`]', '', l.strip())
-            stripped = re.sub(r'!\[.*?\]\(.*?\)', '', stripped)
-            stripped = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', stripped)
-            if stripped:
-                para_lines.append(stripped)
-            elif para_lines:
-                break
-            i += 1
-
-        para_text = " ".join(para_lines).strip()
-        if para_text:
-            blocks.append({"type": "text", "level": 0,
-                           "text": para_text, "anchor": ""})
-
-    return blocks
-
-
-# Иерархический чанкинг (общий для JSON и MD)
-
-def build_chunks(
-    blocks:       list[Block],
-    chunk_size:   int,
-    chunk_overlap: int,
-    source_format: str,   # "json" | "md"
-) -> Generator[dict, None, None]:
-    breadcrumb:   dict[int, str] = {}
+def build_units(blocks: list[dict], chunk_size: int, chunk_overlap: int) -> list[dict]:
+    breadcrumb: dict[int, str] = {}
+    skip_toc = False
+    glossary_mode = False
     buffer_text = ""
     buffer_anchor = ""
+    units: list[dict] = []
 
-    def flush(btext: str, banchor: str) -> "dict | None":
-        btext = btext.strip()
-        if not btext:
-            return None
-        section = " > ".join(v for _, v in sorted(breadcrumb.items()) if v)
-        return {"text": btext, "section": section, "anchor": banchor,
-                "chunk_type": "paragraph", "source_format": source_format}
+    def section() -> str:
+        return " > ".join(v for _, v in sorted(breadcrumb.items()) if v)
 
-    for block in blocks:
-        btype = block["type"]
-        level = block["level"]
-        text = block["text"]
-        anchor = block["anchor"]
+    def flush() -> None:
+        nonlocal buffer_text, buffer_anchor
+        text = buffer_text.strip()
+        if text:
+            for part in _split_long_text(text, chunk_size, chunk_overlap):
+                units.append({"text": part, "section": section(),
+                              "anchor": buffer_anchor, "unit_type": "clause"})
+        buffer_text, buffer_anchor = "", ""
 
-        if btype == "title":
-            if buffer_text:
-                result = flush(buffer_text, buffer_anchor)
-                if result:
-                    yield result
-                buffer_text, buffer_anchor = "", ""
+    def add_to_buffer(text: str, anchor: str = "") -> None:
+        nonlocal buffer_text, buffer_anchor
+        buffer_text = (buffer_text + "\n" + text).strip() if buffer_text else text
+        if not buffer_anchor and anchor:
+            buffer_anchor = anchor
+        if len(buffer_text) > chunk_size:
+            flush()
 
-            breadcrumb = {k: v for k, v in breadcrumb.items() if k < level}
-            breadcrumb[level] = text
-            section = " > ".join(v for _, v in sorted(breadcrumb.items()) if v)
-            yield {"text": text, "section": section, "anchor": anchor,
-                   "chunk_type": "heading", "source_format": source_format}
+    for blk in blocks:
+        kind = blk["kind"]
 
-        elif btype == "table":
-            if buffer_text:
-                result = flush(buffer_text, buffer_anchor)
-                if result:
-                    yield result
-                buffer_text, buffer_anchor = "", ""
-
-            section = " > ".join(v for _, v in sorted(breadcrumb.items()) if v)
-            yield {"text": text, "section": section, "anchor": anchor,
-                   "chunk_type": "table", "source_format": source_format}
-
-        else:
-            if not buffer_anchor and anchor:
-                buffer_anchor = anchor
-
-            if len(buffer_text) + len(text) + 1 > chunk_size and buffer_text:
-                result = flush(buffer_text, buffer_anchor)
-                if result:
-                    for part in _split_long_text(result["text"], chunk_size, chunk_overlap):
-                        yield {**result, "text": part}
-                buffer_text = (
-                    buffer_text[-chunk_overlap:] + " " + text) if chunk_overlap else text
-                buffer_anchor = anchor
+        if skip_toc:
+            if kind == "title":
+                level = blk["level"]
+                text = blk["text"].strip()
+                if (not _is_page_noise(text, level)
+                        and level <= HEADING_MAX_LEVEL
+                        and text.upper() != TOC_TITLE):
+                    skip_toc = False
+                else:
+                    continue
             else:
-                buffer_text = (buffer_text + "\n" + text).strip()
+                continue
 
-    if buffer_text:
-        result = flush(buffer_text, buffer_anchor)
-        if result:
-            for part in _split_long_text(result["text"], chunk_size, chunk_overlap):
-                yield {**result, "text": part}
+        if kind == "title":
+            level = blk["level"]
+            text = blk["text"].strip()
+            if _is_page_noise(text, level):
+                continue
+            if text.upper() == TOC_TITLE and level <= HEADING_MAX_LEVEL:
+                skip_toc = True
+                continue
+            if level <= HEADING_MAX_LEVEL:
+                flush()
+                breadcrumb = {k: v for k, v in breadcrumb.items() if k < level}
+                breadcrumb[level] = text
+                glossary_mode = text.upper().startswith(GLOSSARY_MARKERS)
+            elif level >= CLAUSE_MIN_LEVEL:
+                flush()
+                for part in _split_long_text(text, chunk_size, chunk_overlap):
+                    units.append({"text": part, "section": section(),
+                                  "anchor": blk.get("anchor", ""),
+                                  "unit_type": "clause"})
 
+        elif kind == "text":
+            add_to_buffer(blk["text"], blk.get("anchor", ""))
+
+        elif kind == "table":
+            flush()
+            units.extend(_table_units(blk["grid"], section(), blk.get("anchor", "")))
+
+        elif kind == "list":
+            if glossary_mode and _is_glossary_list(blk["items"]):
+                flush()
+                for item_text in blk["items"]:
+                    term, _ = _split_term(item_text)
+                    units.append({"text": item_text, "term": term,
+                                  "section": section(), "anchor": "",
+                                  "unit_type": "glossary"})
+            else:
+                for item_text in blk["items"]:
+                    add_to_buffer(item_text)
+
+    flush()
+    return units
+
+
+# Запись в Qdrant 
 
 def _add_to_collection(
     client,
     collection_name: str,
-    chunks:      list[dict],
-    source_name: str,
-    embedder:    SentenceTransformer,
+    units:        list[dict],
+    source_name:  str,
+    embedder:     SentenceTransformer,
 ) -> int:
-    if not chunks:
+    if not units:
         return 0
 
-    texts = [PASSAGE_PREFIX + c["text"] for c in chunks]
+    texts = [PASSAGE_PREFIX + u["text"] for u in units]
 
     embeddings = []
     for i in range(0, len(texts), 64):
@@ -411,34 +370,39 @@ def _add_to_collection(
             embedder.encode(batch, normalize_embeddings=True).tolist()
         )
 
-    points = [
-        models.PointStruct(
+    points = []
+    for u, emb in zip(units, embeddings):
+        payload = {
+            "text":      u["text"],
+            "source":    source_name,
+            "section":   u.get("section", ""),
+            "anchor":    u.get("anchor", ""),
+            "unit_type": u.get("unit_type", "clause"),
+        }
+        if u.get("term"):
+            payload["term"] = u["term"]
+        points.append(models.PointStruct(
             id=str(uuid.uuid4()),
             vector={"dense": emb},
-            payload={
-                "text":          c["text"],
-                "source":        source_name,
-                "section":       c["section"],
-                "anchor":        c["anchor"],
-                "chunk_type":    c["chunk_type"],
-                "source_format": c["source_format"],
-            },
-        )
-        for c, emb in zip(chunks, embeddings)
-    ]
+            payload=payload,
+        ))
 
-    client.upsert(collection_name=collection_name, points=points)
-    return len(chunks)
+    for i in range(0, len(points), UPLOAD_BATCH_SIZE):
+        client.upsert(
+            collection_name=collection_name,
+            points=points[i:i + UPLOAD_BATCH_SIZE],
+        )
+    return len(units)
 
 
 def index_documents(
-    input_dir:     Path,
-    qdrant_url:    str,
+    input_dir:      Path,
+    qdrant_url:     str,
     collection_name: str,
-    model_name:    str,
-    chunk_size:    int,
-    chunk_overlap: int,
-    reset:         bool,
+    model_name:     str,
+    chunk_size:     int,
+    chunk_overlap:  int,
+    reset:          bool,
 ) -> None:
     print(f"Загрузка модели: {model_name}")
     embedder = SentenceTransformer(model_name)
@@ -471,60 +435,41 @@ def index_documents(
 
     print(f"Найдено документов: {len(doc_dirs)}\n")
 
-    total_json = 0
-    total_md = 0
+    total = 0
 
     for doc_dir in doc_dirs:
         office_dir = doc_dir / "office"
         source_name = doc_dir.name
         print(f"[{source_name}]")
 
-        # JSON
-        json_blocks, json_fname = load_json_blocks(office_dir)
-        if json_blocks:
-            print(f"  JSON → источник: {json_fname}")
-            json_chunks = list(build_chunks(
-                json_blocks, chunk_size, chunk_overlap, "json"))
-            added = _add_to_collection(
-                client, collection_name, json_chunks, source_name, embedder)
-            total_json += added
-            print(f"  JSON → чанков добавлено: {added}")
-        else:
-            print(f"  JSON → не найден, пропускаем")
+        blocks, fname = load_json_blocks(office_dir)
+        if not blocks:
+            print("  → JSON не найден, пропускаем")
+            print()
+            continue
 
-        # MD
-        md_file = _find_by_extension(office_dir, ".md")
-        if md_file:
-            print(f"  MD   → источник: {md_file.name}")
-            md_blocks = parse_md_blocks(md_file)
-            md_chunks = list(build_chunks(
-                md_blocks, chunk_size, chunk_overlap, "md"))
-            added = _add_to_collection(
-                client, collection_name, md_chunks, source_name, embedder)
-            total_md += added
-            print(f"  MD   → чанков добавлено: {added}")
-        else:
-            print(f"  MD   → не найден, пропускаем")
-
+        print(f"  → источник: {fname}")
+        units = build_units(blocks, chunk_size, chunk_overlap)
+        added = _add_to_collection(
+            client, collection_name, units, source_name, embedder)
+        total += added
+        print(f"  → юнитов добавлено: {added}")
         print()
 
-    total = total_json + total_md
-    print(f"Готово.")
-    print(f"  JSON-чанков : {total_json}")
-    print(f"  MD-чанков   : {total_md}")
-    print(f"  Итого        : {total} в коллекции '{collection_name}'")
+    print(f"Готово. Всего юнитов в '{collection_name}': {total}")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Индексация MinerU (JSON + MD) → Qdrant")
+        description="Индексация MinerU (JSON) → Qdrant")
     parser.add_argument("--input_dir",     required=True,  type=Path)
     parser.add_argument("--qdrant_url",    default=_DEFAULT_QDRANT_URL)
     parser.add_argument("--collection",    default="rag_docs_hybrid")
     parser.add_argument("--model",         default=DEFAULT_MODEL)
     parser.add_argument("--chunk_size",    type=int,
-                        default=DEFAULT_CHUNK_SIZE)
+                        default=800)
     parser.add_argument("--chunk_overlap", type=int,
-                        default=DEFAULT_CHUNK_OVERLAP)
+                        default=80)
     parser.add_argument("--reset",         action="store_true",
                         help="Удалить коллекцию перед индексацией")
 

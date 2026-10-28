@@ -18,13 +18,13 @@ RETRIEVAL_TOP_K = 10
 RRF_K = 60
 DEDUP_THRESHOLD = 0.85
 
-CHUNK_TYPE_BOOST: dict[str, float] = {
-    "paragraph": 0.00,
+UNIT_TYPE_BOOST: dict[str, float] = {
+    "clause":    0.00,
     "table":     0.03,
+    "glossary":  0.00,
+    "paragraph": 0.00,
     "heading": -0.05,
 }
-
-JSON_SCORE_BOOST = 0.02
 
 type DocResult = dict
 
@@ -92,14 +92,8 @@ _init_bm25()
 
 
 def _chunk_score_boost(meta: dict) -> float:
-    chunk_type = meta.get("chunk_type", "paragraph")
-    boost = CHUNK_TYPE_BOOST.get(chunk_type, 0.0)
-
-    if (meta.get("source_format") == "json"
-            and chunk_type in ("paragraph", "table")):
-        boost += JSON_SCORE_BOOST
-
-    return boost
+    unit_type = meta.get("unit_type") or meta.get("chunk_type", "paragraph")
+    return UNIT_TYPE_BOOST.get(unit_type, 0.0)
 
 
 def _jaccard(a: str, b: str) -> float:
