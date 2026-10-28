@@ -6,6 +6,7 @@ from qdrant_client import QdrantClient, models
 
 from app.core.config import settings
 from app.core.embedder import DENSE_VECTOR, SPARSE_VECTOR, BgeM3Embedder
+from app.core.glossary import Glossary
 
 
 QDRANT_URL = settings.qdrant_url
@@ -36,6 +37,7 @@ embed_model = BgeM3Embedder(
     device=settings.EMBED_DEVICE,
 )
 qdrant = QdrantClient(url=QDRANT_URL)
+glossary = Glossary(qdrant, QDRANT_COLLECTION)
 
 
 def _tokenize(text: str) -> list[str]:
@@ -60,32 +62,23 @@ def _deduplicate(results: list[DocResult]) -> list[DocResult]:
 
     kept: list[DocResult] = []
     for candidate in results:
-        is_dup = False
-        for i, existing in enumerate(kept):
-            if candidate["source"] != existing["source"]:
-                continue
-            if _jaccard(candidate["text"], existing["text"]) >= DEDUP_THRESHOLD:
-                if (candidate.get("source_format") == "json"
-                        and existing.get("source_format") == "md"):
-                    kept[i] = candidate
-                is_dup = True
-                break
-        if not is_dup:
-            kept.append(candidate)
+        if any(candidate["source"] == e["source"]
+               and _jaccard(candidate["text"], e["text"]) >= DEDUP_THRESHOLD
+               for e in kept):
+            continue
+        kept.append(candidate)
 
     return kept
 
 
 def _to_result(chunk_id, text: str, meta: dict, score: float) -> DocResult:
     return {
-        "text":          text,
-        "source":        meta.get("source", "unknown"),
-        "chunk_id":      chunk_id,
-        "score":         score,
-        "source_format": meta.get("source_format", ""),
-        "chunk_type":    meta.get("chunk_type", ""),
-        "section":       meta.get("section", ""),
-        "_meta":         meta,
+        "text":     text,
+        "source":   meta.get("source", "unknown"),
+        "chunk_id": chunk_id,
+        "score":    score,
+        "section":  meta.get("section", ""),
+        "_meta":    meta,
     }
 
 
@@ -137,6 +130,16 @@ def _hybrid_search(query: str, limit: int) -> list[DocResult]:
             continue
         results.append(_to_result(point.id, text, meta, float(point.score)))
     return results
+
+
+def lookup_glossary(query: str) -> list[DocResult]:
+    """Точное совпадение термина/аббревиатуры в глоссарии (для мини-роутинга)."""
+    return glossary.lookup(query)
+
+
+def expand_query(query: str) -> str:
+    """Заменить известные аббревиатуры на расшифровки перед поиском."""
+    return glossary.expand(query)
 
 
 def retrieve(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:

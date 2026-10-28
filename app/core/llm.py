@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Generator
 import ollama
 
-from app.core.retrieval import retrieve, DocResult
+from app.core.retrieval import retrieve, lookup_glossary, expand_query, DocResult
 from app.core.config import settings
 
 
@@ -96,10 +96,6 @@ def find_used_sources(answer: str, docs: list[DocResult]) -> list[str]:
     return sorted(used)
 
 
-def _retrieval_query(question: str) -> str:
-    return question.replace("?", "").strip()
-
-
 def stream_answer(
     question: str,
     history: list[tuple[str, str]],
@@ -110,7 +106,10 @@ def stream_answer(
         prompt = _general_prompt(history, question, instructions)
         docs = None
     else:
-        docs = retrieve(_retrieval_query(question))
+        docs = retrieve(expand_query(question))
+        glossary_hits = lookup_glossary(question)
+        if glossary_hits:
+            docs = glossary_hits + docs
         if not docs:
             prompt = _general_prompt(history, question, instructions)
             docs = None
