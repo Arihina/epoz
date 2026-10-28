@@ -276,6 +276,7 @@ def _is_glossary_list(items: list[str]) -> bool:
 
 def build_units(blocks: list[dict], chunk_size: int, chunk_overlap: int) -> list[dict]:
     breadcrumb: dict[int, str] = {}
+    clause_breadcrumb: dict[int, str] = {}
     skip_toc = False
     glossary_mode = False
     buffer_text = ""
@@ -330,10 +331,16 @@ def build_units(blocks: list[dict], chunk_size: int, chunk_overlap: int) -> list
                 flush()
                 breadcrumb = {k: v for k, v in breadcrumb.items() if k < level}
                 breadcrumb[level] = text
+                clause_breadcrumb = {}   # новый раздел — сброс цепочки пунктов
                 glossary_mode = text.upper().startswith(GLOSSARY_MARKERS)
             elif level >= CLAUSE_MIN_LEVEL:
                 flush()
-                for part in _split_long_text(text, chunk_size, chunk_overlap):
+                context = " ".join(clause_breadcrumb[k]
+                                   for k in sorted(clause_breadcrumb) if k < level)
+                full_text = f"{context} {text}".strip() if context else text
+                clause_breadcrumb = {k: v for k, v in clause_breadcrumb.items() if k < level}
+                clause_breadcrumb[level] = text
+                for part in _split_long_text(full_text, chunk_size, chunk_overlap):
                     units.append({"text": part, "section": section(),
                                   "anchor": blk.get("anchor", ""),
                                   "unit_type": "clause"})
@@ -368,6 +375,7 @@ def _add_to_collection(
     collection_name: str,
     units:        list[dict],
     source_name:  str,
+    model_name:   str,
     embedder:     BgeM3Embedder,
 ) -> int:
     if not units:
@@ -379,11 +387,12 @@ def _add_to_collection(
     points = []
     for u, dense, sparse in zip(units, dense_vecs, sparse_vecs):
         payload = {
-            "text":      u["text"],
-            "source":    source_name,
-            "section":   u.get("section", ""),
-            "anchor":    u.get("anchor", ""),
-            "unit_type": u.get("unit_type", "clause"),
+            "text":        u["text"],
+            "source":      source_name,
+            "section":     u.get("section", ""),
+            "anchor":      u.get("anchor", ""),
+            "unit_type":   u.get("unit_type", "clause"),
+            "embed_model": model_name,
         }
         if u.get("term"):
             payload["term"] = u["term"]
@@ -409,8 +418,27 @@ def _add_to_collection(
     return len(units)
 
 
-def _ensure_collection(client, collection_name: str) -> None:
-    """Создать коллекцию dense+sparse или проверить, что схема совпадает."""
+def _check_embed_model(client, collection_name: str, expected_model: str) -> None:
+    """Проверить, что коллекция проиндексирована той же моделью."""
+    try:
+        records, _ = client.scroll(
+            collection_name=collection_name, limit=1,
+            with_payload=True, with_vectors=False,
+        )
+    except Exception:
+        return
+    if not records:
+        return
+    actual = (records[0].payload or {}).get("embed_model")
+    if actual and str(actual).strip().lower() != expected_model.strip().lower():
+        sys.exit(
+            f"Коллекция '{collection_name}' проиндексирована моделью '{actual}', "
+            f"а сейчас используется '{expected_model}'. Пересоздайте: --reset"
+        )
+
+
+def _ensure_collection(client, collection_name: str, model_name: str) -> None:
+    """Создать коллекцию dense+sparse или проверить, что схема и модель совпадают."""
     if not client.collection_exists(collection_name):
         client.create_collection(
             collection_name=collection_name,
@@ -441,6 +469,8 @@ def _ensure_collection(client, collection_name: str) -> None:
             f"Пересоздайте коллекцию: --reset"
         )
 
+    _check_embed_model(client, collection_name, model_name)
+
 
 def index_documents(
     input_dir:      Path,
@@ -470,7 +500,7 @@ def index_documents(
         client.delete_collection(collection_name)
         print(f"Коллекция '{collection_name}' удалена (--reset)")
 
-    _ensure_collection(client, collection_name)
+    _ensure_collection(client, collection_name, model_name)
 
     doc_dirs = sorted([
         d for d in input_dir.iterdir()
@@ -499,7 +529,7 @@ def index_documents(
         print(f"  → источник: {fname}")
         units = build_units(blocks, chunk_size, chunk_overlap)
         added = _add_to_collection(
-            client, collection_name, units, source_name, embedder)
+            client, collection_name, units, source_name, model_name, embedder)
         total += added
         print(f"  → юнитов добавлено: {added}")
         print()
