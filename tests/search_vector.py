@@ -1,7 +1,5 @@
 """
-search_vector.py
-────────────────
-Семантический (векторный) поиск по базе знаний (Qdrant).
+Семантический (dense) поиск по базе знаний: dense-векторы BGE-M3 в Qdrant.
 
 Использование:
     python search_vector.py "порядок создания закупочной комиссии"
@@ -12,8 +10,8 @@ search_vector.py
     # фильтр по документу
     python search_vector.py "состав комиссии" --source "doc_name"
 
-    # фильтр по типу чанка
-    python search_vector.py "состав комиссии" --type paragraph
+    # фильтр по типу юнита
+    python search_vector.py "состав комиссии" --type table
 
     # минимальный порог схожести (0..1)
     python search_vector.py "состав комиссии" --threshold 0.5
@@ -21,58 +19,82 @@ search_vector.py
 
 import argparse
 
+import torch
+from FlagEmbedding import BGEM3FlagModel
+from huggingface_hub import snapshot_download
 from qdrant_client import QdrantClient, models
-from sentence_transformers import SentenceTransformer
 
+EMBED_MODEL = "BAAI/bge-m3"
 QDRANT_URL = "http://localhost:6336"
 QDRANT_COLLECTION = "rag_docs_hybrid"
-EMBED_MODEL = "BAAI/bge-m3"
 DEFAULT_TOP_K = 5
 DEFAULT_THRESHOLD = 0.0    # без порога по умолчанию — показываем всё
 PREVIEW_LEN = 300
 
 
-def search(
-    query:      str,
-    client,
-    embedder:   SentenceTransformer,
-    top_k:      int,
-    threshold:  float,
-    source:     str | None,
-    chunk_type: str | None,
-) -> None:
-    embedding = embedder.encode(
-        [query],
-        convert_to_numpy=True,
-        normalize_embeddings=True,
-    )[0].tolist()
+def load_embedder(model_name: str = EMBED_MODEL) -> BGEM3FlagModel:
+    """Локальный снапшот, если он уже в кэше, иначе — загрузка по имени."""
+    try:
+        model_path = snapshot_download(model_name, local_files_only=True)
+    except Exception:
+        model_path = model_name
 
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    return BGEM3FlagModel(
+        model_path,
+        use_fp16=device.startswith("cuda"),
+        devices=device,
+        return_dense=True,
+        return_sparse=False,
+        return_colbert_vecs=False,
+    )
+
+
+def query_embedding(embedder: BGEM3FlagModel, query: str) -> list[float]:
+    out = embedder.encode(
+        [query], return_dense=True, return_sparse=False, return_colbert_vecs=False)
+    return out["dense_vecs"][0].tolist()
+
+
+def build_filter(source: str | None, unit_type: str | None) -> models.Filter | None:
     conditions = []
     if source:
         conditions.append(models.FieldCondition(
             key="source", match=models.MatchValue(value=source)))
-    if chunk_type:
+    if unit_type:
         conditions.append(models.FieldCondition(
-            key="chunk_type", match=models.MatchValue(value=chunk_type)))
-    query_filter = models.Filter(must=conditions) if conditions else None
+            key="unit_type", match=models.MatchValue(value=unit_type)))
+    return models.Filter(must=conditions) if conditions else None
 
-    raw = client.query_points(
-        collection_name=QDRANT_COLLECTION,
+
+def search(
+    query:      str,
+    client:     QdrantClient,
+    embedder:   BGEM3FlagModel,
+    collection: str,
+    top_k:      int,
+    threshold:  float,
+    source:     str | None,
+    unit_type:  str | None,
+) -> None:
+    embedding = query_embedding(embedder, query)
+
+    response = client.query_points(
+        collection_name=collection,
         query=embedding,
         using="dense",
+        query_filter=build_filter(source, unit_type),
         limit=top_k,
-        query_filter=query_filter,
         with_payload=True,
     )
 
     results = []
-    for point in raw.points:
+    for point in response.points:
         score = float(point.score)
         if score < threshold:
             continue
         meta = point.payload or {}
-        doc = meta.get("text", "")
-        results.append((score, doc, meta))
+        results.append((score, meta.get("text", ""), meta))
 
     if not results:
         print(f"Нет результатов выше порога {threshold:.2f}.")
@@ -83,18 +105,10 @@ def search(
     print("═" * 80)
 
     for rank, (score, doc, meta) in enumerate(results, 1):
-        source_val = meta.get("source", "—")
-        section_val = meta.get("section", "—")
-        ctype_val = meta.get("chunk_type", "—")
-        anchor_val = meta.get("anchor", "")
-
         print(f"\n  #{rank}  score={score:.4f}")
-        print(f"  документ : {source_val}")
-        print(f"  раздел   : {section_val}")
-        print(f"  тип      : {ctype_val}", end="")
-        if anchor_val:
-            print(f"  |  anchor: {anchor_val}", end="")
-        print()
+        print(f"  документ : {meta.get('source', '—')}")
+        print(f"  раздел   : {meta.get('section', '—')}")
+        print(f"  тип      : {meta.get('unit_type', '—')}")
         print(f"  длина    : {len(doc)} символов")
         print(f"  текст    :")
 
@@ -105,7 +119,7 @@ def search(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Векторный поиск по Qdrant")
+    parser = argparse.ArgumentParser(description="Dense (BGE-M3) поиск по Qdrant")
     parser.add_argument("query",                help="Поисковый запрос")
     parser.add_argument("--top",       type=int,   default=DEFAULT_TOP_K)
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD,
@@ -113,24 +127,25 @@ def main() -> None:
     parser.add_argument("--source",    default=None,
                         help="Фильтр по имени документа")
     parser.add_argument("--type",      default=None,
-                        choices=["heading", "paragraph", "table"],
-                        help="Фильтр по типу чанка")
+                        choices=["glossary", "clause", "table"],
+                        help="Фильтр по unit_type")
     parser.add_argument("--qdrant_url", default=QDRANT_URL)
     parser.add_argument("--collection", default=QDRANT_COLLECTION)
+    parser.add_argument("--model", default=EMBED_MODEL)
     args = parser.parse_args()
 
-    print(f"Загрузка модели {EMBED_MODEL}...")
-    embedder = SentenceTransformer(EMBED_MODEL)
     client = QdrantClient(url=args.qdrant_url)
+    embedder = load_embedder(args.model)
 
     search(
         query=args.query,
         client=client,
         embedder=embedder,
+        collection=args.collection,
         top_k=args.top,
         threshold=args.threshold,
         source=args.source,
-        chunk_type=args.type,
+        unit_type=args.type,
     )
 
 

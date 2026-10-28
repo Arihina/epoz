@@ -1,19 +1,19 @@
 """
-Просмотр чанков по документам в Qdrant.
+Просмотр юнитов по документам в Qdrant.
 
 Использование:
     # список всех документов
     python chunks_by_doc.py
 
-    # все чанки конкретного документа
+    # все юниты конкретного документа
     python chunks_by_doc.py --source "doc_name"
 
-    # только определённый тип чанков
-    python chunks_by_doc.py --source "doc_name" --type heading
-    python chunks_by_doc.py --source "doc_name" --type paragraph
+    # только определённый тип юнитов
+    python chunks_by_doc.py --source "doc_name" --type glossary
+    python chunks_by_doc.py --source "doc_name" --type clause
     python chunks_by_doc.py --source "doc_name" --type table
 
-    # показать полный текст чанков (без обрезки)
+    # показать полный текст юнитов (без обрезки)
     python chunks_by_doc.py --source "doc_name" --full
 """
 
@@ -52,61 +52,66 @@ def list_sources(client) -> None:
         return
 
     stats: dict[str, dict] = defaultdict(
-        lambda: {"total": 0, "heading": 0, "paragraph": 0, "table": 0})
+        lambda: {"total": 0, "glossary": 0, "clause": 0, "table": 0})
     for meta, _ in items:
         src = meta.get("source", "unknown")
-        ctype = meta.get("chunk_type", "unknown")
+        utype = meta.get("unit_type", meta.get("chunk_type", "unknown"))
         stats[src]["total"] += 1
-        if ctype in stats[src]:
-            stats[src][ctype] += 1
+        if utype in stats[src]:
+            stats[src][utype] += 1
 
     print(
-        f"\n{'Документ':<50} {'Всего':>6} {'heading':>8} {'paragraph':>10} {'table':>6}")
-    print("─" * 84)
+        f"\n{'Документ':<50} {'Всего':>6} {'glossary':>9} {'clause':>7} {'table':>6}")
+    print("─" * 82)
     for src in sorted(stats):
         s = stats[src]
         print(
-            f"{src:<50} {s['total']:>6} {s['heading']:>8} {s['paragraph']:>10} {s['table']:>6}")
+            f"{src:<50} {s['total']:>6} {s['glossary']:>9} {s['clause']:>7} {s['table']:>6}")
     print(f"\nИтого документов: {len(stats)}")
 
 
-def show_chunks(client, source: str, chunk_type: str | None, full: bool) -> None:
+def show_chunks(client, source: str, unit_type: str | None, full: bool) -> None:
     items = _load(client)
     docs = [(meta, text) for meta, text in items
             if meta.get("source") == source
-            and (chunk_type is None or meta.get("chunk_type") == chunk_type)]
+            and (unit_type is None
+                 or meta.get("unit_type", meta.get("chunk_type")) == unit_type)]
 
     if not docs:
-        print(f"Чанков не найдено для source='{source}'" +
-              (f", chunk_type='{chunk_type}'" if chunk_type else ""))
+        print(f"Юнитов не найдено для source='{source}'" +
+              (f", unit_type='{unit_type}'" if unit_type else ""))
         return
 
     grouped: dict[str, list] = defaultdict(list)
     for meta, text in docs:
-        grouped[meta.get("chunk_type", "unknown")].append((text, meta))
+        grouped[meta.get("unit_type", meta.get("chunk_type", "unknown"))].append(
+            (text, meta))
 
     total = len(docs)
-    print(f"\nДокумент: {source}  |  чанков: {total}" +
-          (f"  |  фильтр: {chunk_type}" if chunk_type else ""))
+    print(f"\nДокумент: {source}  |  юнитов: {total}" +
+          (f"  |  фильтр: {unit_type}" if unit_type else ""))
     print("═" * 80)
 
-    type_order = ["heading", "paragraph", "table"]
+    type_order = ["glossary", "clause", "table"]
     all_types = type_order + [t for t in grouped if t not in type_order]
 
-    for ctype in all_types:
-        if ctype not in grouped:
+    for utype in all_types:
+        if utype not in grouped:
             continue
-        items_of_type = grouped[ctype]
-        print(f"\n[{ctype.upper()}] — {len(items_of_type)} шт.")
+        items_of_type = grouped[utype]
+        print(f"\n[{utype.upper()}] — {len(items_of_type)} шт.")
         print("─" * 80)
 
         for i, (text, meta) in enumerate(items_of_type, 1):
             section = meta.get("section", "")
             anchor = meta.get("anchor", "")
+            term = meta.get("term", "")
 
             print(f"\n  #{i}")
             if section:
                 print(f"  section : {section}")
+            if term:
+                print(f"  term    : {term}")
             if anchor:
                 print(f"  anchor  : {anchor}")
             print(f"  длина   : {len(text)} символов")
@@ -122,12 +127,12 @@ def show_chunks(client, source: str, chunk_type: str | None, full: bool) -> None
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Просмотр чанков в Qdrant")
+    parser = argparse.ArgumentParser(description="Просмотр юнитов в Qdrant")
     parser.add_argument("--source", default=None,
                         help="Имя документа (значение поля source в payload)")
     parser.add_argument("--type",   default=None,
-                        choices=["heading", "paragraph", "table"],
-                        help="Фильтр по типу чанка")
+                        choices=["glossary", "clause", "table"],
+                        help="Фильтр по unit_type")
     parser.add_argument("--full",   action="store_true",
                         help="Показывать полный текст без обрезки")
     parser.add_argument("--qdrant_url", default=QDRANT_URL)

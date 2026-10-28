@@ -1,5 +1,8 @@
 """
-Поиск по ключевым словам (BM25) по базе знаний (Qdrant).
+Лексический (sparse) поиск по базе знаний: веса BGE-M3 напрямую в Qdrant.
+
+В отличие от BM25, веса считает сама BGE-M3 (обучаемая sparse-голова),
+поэтому запрос и чанк сравниваются по одним и тем же token_id.
 
 Использование:
     python search_keywords.py "закупочная комиссия состав"
@@ -13,125 +16,129 @@
     # фильтр по типу чанка
     python search_keywords.py "председатель" --type table
 
-    # показать все слова запроса и их BM25-веса в найденных чанках
+    # показать, какие токены запроса совпали с чанком и их вклад
     python search_keywords.py "состав комиссии" --explain
 """
 
 import argparse
-import re
 from collections import defaultdict
 
-import numpy as np
-from rank_bm25 import BM25Okapi
-from qdrant_client import QdrantClient
+import torch
+from FlagEmbedding import BGEM3FlagModel
+from huggingface_hub import snapshot_download
+from qdrant_client import QdrantClient, models
 
+EMBED_MODEL = "BAAI/bge-m3"
 QDRANT_URL = "http://localhost:6336"
 QDRANT_COLLECTION = "rag_docs_hybrid"
 DEFAULT_TOP_K = 5
 PREVIEW_LEN = 300
 
 
-def tokenize(text: str) -> list[str]:
-    return re.sub(r"[^\w\s]", " ", text.lower()).split()
+def load_embedder(model_name: str = EMBED_MODEL) -> BGEM3FlagModel:
+    """Локальный снапшот, если он уже в кэше, иначе — загрузка по имени."""
+    try:
+        model_path = snapshot_download(model_name, local_files_only=True)
+    except Exception:
+        model_path = model_name
+
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    return BGEM3FlagModel(
+        model_path,
+        use_fp16=device.startswith("cuda"),
+        devices=device,
+        return_dense=False,
+        return_sparse=True,
+        return_colbert_vecs=False,
+    )
 
 
-def highlight(text: str, query_tokens: set[str], max_len: int = PREVIEW_LEN) -> str:
-    """Обрезает текст и помечает совпадения символами >>..<<."""
+def query_weights(embedder: BGEM3FlagModel, query: str) -> dict[int, float]:
+    out = embedder.encode(
+        [query], return_dense=False, return_sparse=True, return_colbert_vecs=False)
+    weights = out["lexical_weights"][0]
+    return {int(k): float(v) for k, v in weights.items() if float(v) > 0}
+
+
+def build_filter(source: str | None, chunk_type: str | None) -> models.Filter | None:
+    conditions = []
+    if source:
+        conditions.append(models.FieldCondition(
+            key="source", match=models.MatchValue(value=source)))
+    if chunk_type:
+        conditions.append(models.FieldCondition(
+            key="unit_type", match=models.MatchValue(value=chunk_type)))
+    return models.Filter(must=conditions) if conditions else None
+
+
+def preview(text: str, max_len: int = PREVIEW_LEN) -> str:
     flat = text.replace("\n", " ")
-    if len(flat) > max_len:
-        best_start = 0
-        best_hits = 0
-        step = max_len // 2
-        for start in range(0, max(1, len(flat) - max_len), step):
-            window = flat[start: start + max_len]
-            hits = sum(1 for t in query_tokens if t in window.lower())
-            if hits > best_hits:
-                best_hits = hits
-                best_start = start
-        flat = "..." + flat[best_start: best_start + max_len] + "..."
-
-    words = flat.split()
-    marked = []
-    for w in words:
-        clean = re.sub(r"[^\w]", "", w.lower())
-        if clean in query_tokens:
-            marked.append(f">>{w}<<")
-        else:
-            marked.append(w)
-    return " ".join(marked)
+    return flat if len(flat) <= max_len else flat[:max_len] + "..."
 
 
-def explain_scores(doc: str, query_tokens: list[str]) -> None:
-    """Выводит вклад каждого токена запроса в итоговый score."""
-    print("  вклад токенов:")
-    doc_tokens = tokenize(doc)
-    for token in query_tokens:
-        tf = doc_tokens.count(token)
-        print(f"    «{token}» — встречается {tf} раз")
+def token_text(embedder: BGEM3FlagModel, token_id: int) -> str:
+    token = embedder.tokenizer.convert_ids_to_tokens(token_id)
+    return token.replace("\u2581", " ").strip() or token
 
 
-def load_documents(client, source, chunk_type):
-    documents, metadatas = [], []
-    offset = None
-    while True:
-        records, offset = client.scroll(
-            collection_name=QDRANT_COLLECTION,
-            limit=512,
-            offset=offset,
-            with_payload=True,
-            with_vectors=False,
-        )
-        for rec in records:
-            payload = rec.payload or {}
-            if source and payload.get("source") != source:
-                continue
-            if chunk_type and payload.get("chunk_type") != chunk_type:
-                continue
-            text = payload.get("text", "")
-            if text:
-                documents.append(text)
-                metadatas.append(payload)
-        if offset is None:
-            break
-    return documents, metadatas
+def explain_hits(
+    embedder: BGEM3FlagModel,
+    query: dict[int, float],
+    chunk_vector,
+) -> str:
+    """Наибольшие произведения q_w * c_w по общим token_id."""
+    if not isinstance(chunk_vector, models.SparseVector):
+        return "—"
+    chunk = dict(zip(chunk_vector.indices, chunk_vector.values))
+    hits = [
+        (weight * chunk[token_id], token_id, weight, chunk[token_id])
+        for token_id, weight in query.items()
+        if token_id in chunk
+    ]
+    if not hits:
+        return "—"
+    hits.sort(reverse=True)
+    return ", ".join(
+        f"«{token_text(embedder, token_id)}» {qw:.2f}×{cw:.2f}={score:.2f}"
+        for score, token_id, qw, cw in hits[:5]
+    )
 
 
 def search(
     query:      str,
-    client,
+    client:     QdrantClient,
+    embedder:   BGEM3FlagModel,
+    collection: str,
     top_k:      int,
     source:     str | None,
     chunk_type: str | None,
     explain:    bool,
 ) -> None:
-    documents, metadatas = load_documents(client, source, chunk_type)
-
-    if not documents:
-        print("Коллекция пуста или фильтр не дал результатов.")
+    weights = query_weights(embedder, query)
+    if not weights:
+        print(f"В запросе «{query}» нет токенов для лексического поиска.")
         return
 
-    tokenized = [tokenize(doc) for doc in documents]
-    bm25 = BM25Okapi(tokenized)
+    sparse = models.SparseVector(
+        indices=list(weights.keys()), values=list(weights.values()))
 
-    query_tokens = tokenize(query)
-    scores = bm25.get_scores(query_tokens)
-    ranked = np.argsort(scores)[::-1][:top_k]
+    response = client.query_points(
+        collection_name=collection,
+        query=sparse,
+        using="sparse",
+        query_filter=build_filter(source, chunk_type),
+        limit=top_k,
+        with_payload=True,
+        with_vectors=True,
+    )
 
-    results = []
-    for idx in ranked:
-        score = float(scores[idx])
-        if score <= 0:
-            continue
-        results.append((score, idx, documents[idx], metadatas[idx]))
-
+    results = response.points
     if not results:
         print(f"По запросу «{query}» ничего не найдено.")
         return
 
-    query_set = set(query_tokens)
-
     print(f"\nЗапрос  : «{query}»")
-    print(f"Токены  : {query_tokens}")
+    print(f"Токенов : {len(weights)}")
     if source or chunk_type:
         active = []
         if source:
@@ -142,57 +149,59 @@ def search(
     print(f"Найдено : {len(results)} результатов\n")
     print("═" * 80)
 
-    for rank, (score, idx, doc, meta) in enumerate(results, 1):
-        source_val = meta.get("source", "—")
-        section_val = meta.get("section", "—")
-        ctype_val = meta.get("chunk_type", "—")
+    for rank, point in enumerate(results, 1):
+        meta = point.payload or {}
+        text = meta.get("text", "")
 
-        print(f"\n  #{rank}  BM25-score={score:.4f}")
-        print(f"  документ : {source_val}")
-        print(f"  раздел   : {section_val}")
-        print(f"  тип      : {ctype_val}")
-        print(f"  длина    : {len(doc)} символов")
+        print(f"\n  #{rank}  sparse-score={point.score:.4f}")
+        print(f"  документ : {meta.get('source', '—')}")
+        print(f"  раздел   : {meta.get('section', '—')}")
+        print(f"  тип      : {meta.get('unit_type', meta.get('chunk_type', '—'))}")
+        print(f"  длина    : {len(text)} символов")
 
         if explain:
-            explain_scores(doc, query_tokens)
+            chunk_vector = (point.vector or {}).get("sparse")
+            print(f"  совпадения: {explain_hits(embedder, weights, chunk_vector)}")
 
-        print(f"  текст    :")
-        print(f"    {highlight(doc, query_set)}")
+        print("  текст    :")
+        print(f"    {preview(text)}")
         print("─" * 80)
 
-    # статистика по документам
     if not source:
         print("\nРаспределение по документам:")
         doc_hits: dict[str, list[float]] = defaultdict(list)
-        for score, _, _, meta in results:
-            doc_hits[meta.get("source", "unknown")].append(score)
+        for point in results:
+            meta = point.payload or {}
+            doc_hits[meta.get("source", "unknown")].append(float(point.score))
         for src in sorted(doc_hits, key=lambda s: max(doc_hits[s]), reverse=True):
-            scores_list = doc_hits[src]
-            print(
-                f"  {src:<50}  чанков: {len(scores_list)}  max: {max(scores_list):.4f}")
+            scores = doc_hits[src]
+            print(f"  {src:<50}  чанков: {len(scores)}  max: {max(scores):.4f}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="BM25 поиск по Qdrant")
-    parser.add_argument(
-        "query",               help="Поисковый запрос (ключевые слова)")
+    parser = argparse.ArgumentParser(description="Sparse (BGE-M3) поиск по Qdrant")
+    parser.add_argument("query", help="Поисковый запрос (ключевые слова)")
     parser.add_argument("--top",      type=int, default=DEFAULT_TOP_K)
     parser.add_argument("--source",   default=None,
                         help="Фильтр по имени документа")
     parser.add_argument("--type",     default=None,
-                        choices=["heading", "paragraph", "table"],
-                        help="Фильтр по типу чанка")
+                        choices=["glossary", "clause", "table", "paragraph"],
+                        help="Фильтр по unit_type")
     parser.add_argument("--explain",  action="store_true",
-                        help="Показать вклад каждого токена запроса")
+                        help="Показать совпавшие токены запроса и их вклад")
     parser.add_argument("--qdrant_url", default=QDRANT_URL)
     parser.add_argument("--collection", default=QDRANT_COLLECTION)
+    parser.add_argument("--model", default=EMBED_MODEL)
     args = parser.parse_args()
 
     client = QdrantClient(url=args.qdrant_url)
+    embedder = load_embedder(args.model)
 
     search(
         query=args.query,
         client=client,
+        embedder=embedder,
+        collection=args.collection,
         top_k=args.top,
         source=args.source,
         chunk_type=args.type,
