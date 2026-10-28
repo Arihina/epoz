@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     EMBED_MODEL: str
     OLLAMA_MODEL: str
 
+    EMBED_DEVICE: str | None = None
+    EMBED_LOCAL_FILES_ONLY: bool = True
+
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6336
 

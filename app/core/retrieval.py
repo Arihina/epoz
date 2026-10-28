@@ -30,7 +30,11 @@ UNIT_TYPE_BOOST: dict[str, float] = {
 type DocResult = dict
 
 
-embed_model = BgeM3Embedder(EMBED_MODEL, local_files_only=True)
+embed_model = BgeM3Embedder(
+    EMBED_MODEL,
+    local_files_only=settings.EMBED_LOCAL_FILES_ONLY,
+    device=settings.EMBED_DEVICE,
+)
 qdrant = QdrantClient(url=QDRANT_URL)
 
 
