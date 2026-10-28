@@ -31,12 +31,34 @@ UNIT_TYPE_BOOST: dict[str, float] = {
 type DocResult = dict
 
 
+def _check_embed_model(client, collection: str, expected_model: str) -> None:
+    """Fail-fast: коллекция должна быть проиндексирована той же моделью."""
+    try:
+        records, _ = client.scroll(
+            collection_name=collection, limit=1,
+            with_payload=True, with_vectors=False,
+        )
+    except Exception:
+        return
+    if not records:
+        return
+    actual = (records[0].payload or {}).get("embed_model")
+    if actual and str(actual).strip().lower() != expected_model.strip().lower():
+        raise RuntimeError(
+            f"Коллекция '{collection}' проиндексирована моделью '{actual}', "
+            f"а сервис настроен на '{expected_model}'. "
+            f"Переиндексируйте с --reset"
+        )
+
+
+qdrant = QdrantClient(url=QDRANT_URL)
+_check_embed_model(qdrant, QDRANT_COLLECTION, EMBED_MODEL)
 embed_model = BgeM3Embedder(
     EMBED_MODEL,
     local_files_only=settings.EMBED_LOCAL_FILES_ONLY,
     device=settings.EMBED_DEVICE,
 )
-qdrant = QdrantClient(url=QDRANT_URL)
+
 glossary = Glossary(qdrant, QDRANT_COLLECTION)
 
 
