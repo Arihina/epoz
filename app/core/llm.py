@@ -8,7 +8,6 @@ from app.core.config import settings
 
 OLLAMA_HOST = "http://localhost:11434"
 OLLAMA_MODEL = settings.OLLAMA_MODEL
-RAG_MIN_SCORE = 0.013
 
 
 _client = ollama.Client(host=OLLAMA_HOST)
@@ -112,7 +111,7 @@ def stream_answer(
         docs = None
     else:
         docs = retrieve(_retrieval_query(question))
-        if not docs or docs[0]["score"] < RAG_MIN_SCORE:
+        if not docs:
             prompt = _general_prompt(history, question, instructions)
             docs = None
         else:

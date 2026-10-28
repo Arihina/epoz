@@ -15,8 +15,12 @@
 Заголовки разделов не индексируются отдельно — попадают в поле section.
 Оглавление («СОДЕРЖАНИЕ») и колонтитулы/номера страниц отбрасываются.
 
+Коллекция Qdrant хранит два именованных вектора:
+  - dense  — 1024-мерный эмбеддинг BGE-M3 (cosine);
+  - sparse — лексические веса BGE-M3 (token_id -> вес) для гибридного поиска.
+
 Использование:
-    pip install qdrant-client sentence-transformers beautifulsoup4
+    pip install qdrant-client FlagEmbedding beautifulsoup4
 
     python create_collection_hybrid.py \
         --input_dir ./EPoZ_data \
@@ -36,7 +40,15 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup
 from qdrant_client import QdrantClient, models
-from sentence_transformers import SentenceTransformer
+
+from app.core.embedder import (
+    DENSE_DIM,
+    DENSE_VECTOR,
+    DEFAULT_BATCH_SIZE,
+    DEFAULT_MAX_LENGTH,
+    SPARSE_VECTOR,
+    BgeM3Embedder,
+)
 
 
 DEFAULT_MODEL = "BAAI/bge-m3"
@@ -356,22 +368,16 @@ def _add_to_collection(
     collection_name: str,
     units:        list[dict],
     source_name:  str,
-    embedder:     SentenceTransformer,
+    embedder:     BgeM3Embedder,
 ) -> int:
     if not units:
         return 0
 
     texts = [PASSAGE_PREFIX + u["text"] for u in units]
-
-    embeddings = []
-    for i in range(0, len(texts), 64):
-        batch = texts[i: i + 64]
-        embeddings.extend(
-            embedder.encode(batch, normalize_embeddings=True).tolist()
-        )
+    dense_vecs, sparse_vecs = embedder.encode(texts)
 
     points = []
-    for u, emb in zip(units, embeddings):
+    for u, dense, sparse in zip(units, dense_vecs, sparse_vecs):
         payload = {
             "text":      u["text"],
             "source":    source_name,
@@ -381,9 +387,17 @@ def _add_to_collection(
         }
         if u.get("term"):
             payload["term"] = u["term"]
+
+        vector: dict = {DENSE_VECTOR: dense.tolist()}
+        if sparse:
+            vector[SPARSE_VECTOR] = models.SparseVector(
+                indices=list(sparse.keys()),
+                values=list(sparse.values()),
+            )
+
         points.append(models.PointStruct(
             id=str(uuid.uuid4()),
-            vector={"dense": emb},
+            vector=vector,
             payload=payload,
         ))
 
@@ -395,6 +409,39 @@ def _add_to_collection(
     return len(units)
 
 
+def _ensure_collection(client, collection_name: str) -> None:
+    """Создать коллекцию dense+sparse или проверить, что схема совпадает."""
+    if not client.collection_exists(collection_name):
+        client.create_collection(
+            collection_name=collection_name,
+            vectors_config={
+                DENSE_VECTOR: models.VectorParams(
+                    size=DENSE_DIM,
+                    distance=models.Distance.COSINE,
+                ),
+            },
+            sparse_vectors_config={
+                SPARSE_VECTOR: models.SparseVectorParams(
+                    index=models.SparseIndexParams(on_disk=False),
+                ),
+            },
+        )
+        print(f"Коллекция '{collection_name}' создана (dense + sparse)")
+        return
+
+    params = client.get_collection(collection_name).config.params
+    vectors = params.vectors if isinstance(params.vectors, dict) else {}
+    sparse_vectors = params.sparse_vectors or {}
+    dense_size = getattr(vectors.get(DENSE_VECTOR), "size", None)
+
+    if dense_size != DENSE_DIM or SPARSE_VECTOR not in sparse_vectors:
+        sys.exit(
+            f"Схема коллекции '{collection_name}' не соответствует dense+sparse "
+            f"(dense: {dense_size}, sparse: {sorted(sparse_vectors)}). "
+            f"Пересоздайте коллекцию: --reset"
+        )
+
+
 def index_documents(
     input_dir:      Path,
     qdrant_url:     str,
@@ -403,9 +450,19 @@ def index_documents(
     chunk_size:     int,
     chunk_overlap:  int,
     reset:          bool,
+    batch_size:     int = DEFAULT_BATCH_SIZE,
+    max_length:     int = DEFAULT_MAX_LENGTH,
+    local_files_only: bool = False,
 ) -> None:
     print(f"Загрузка модели: {model_name}")
-    embedder = SentenceTransformer(model_name)
+    embedder = BgeM3Embedder(
+        model_name,
+        local_files_only=local_files_only,
+        batch_size=batch_size,
+        max_length=max_length,
+    )
+    print(f"  → устройство: {embedder.device}, "
+          f"батч: {batch_size}, max_length: {max_length}")
 
     client = QdrantClient(url=qdrant_url)
 
@@ -413,16 +470,7 @@ def index_documents(
         client.delete_collection(collection_name)
         print(f"Коллекция '{collection_name}' удалена (--reset)")
 
-    if not client.collection_exists(collection_name):
-        client.create_collection(
-            collection_name=collection_name,
-            vectors_config={
-                "dense": models.VectorParams(
-                    size=embedder.get_sentence_embedding_dimension(),
-                    distance=models.Distance.COSINE,
-                ),
-            },
-        )
+    _ensure_collection(client, collection_name)
 
     doc_dirs = sorted([
         d for d in input_dir.iterdir()
@@ -470,6 +518,12 @@ def main() -> None:
                         default=800)
     parser.add_argument("--chunk_overlap", type=int,
                         default=80)
+    parser.add_argument("--batch_size",    type=int, default=DEFAULT_BATCH_SIZE,
+                        help="Текстов на один проход модели")
+    parser.add_argument("--max_length",    type=int, default=DEFAULT_MAX_LENGTH,
+                        help="Максимум токенов на текст (BGE-M3: до 8192)")
+    parser.add_argument("--local_files_only", action="store_true",
+                        help="Не обращаться к HF Hub, брать модель из кэша")
     parser.add_argument("--reset",         action="store_true",
                         help="Удалить коллекцию перед индексацией")
 
@@ -482,6 +536,9 @@ def main() -> None:
         chunk_size=args.chunk_size,
         chunk_overlap=args.chunk_overlap,
         reset=args.reset,
+        batch_size=args.batch_size,
+        max_length=args.max_length,
+        local_files_only=args.local_files_only,
     )
 
 

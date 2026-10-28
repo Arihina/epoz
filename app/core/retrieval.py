@@ -1,21 +1,22 @@
 from __future__ import annotations
 
 import re
-import numpy as np
-from rank_bm25 import BM25Okapi
-from sentence_transformers import SentenceTransformer
+
 from qdrant_client import QdrantClient, models
 
 from app.core.config import settings
+from app.core.embedder import DENSE_VECTOR, SPARSE_VECTOR, BgeM3Embedder
 
 
 QDRANT_URL = settings.qdrant_url
 QDRANT_COLLECTION = "rag_docs_hybrid"
 EMBED_MODEL = settings.EMBED_MODEL
 
+
 RETRIEVAL_THRESHOLD = 0.35
 RETRIEVAL_TOP_K = 10
-RRF_K = 60
+
+PREFETCH_MULTIPLIER = 2
 DEDUP_THRESHOLD = 0.85
 
 UNIT_TYPE_BOOST: dict[str, float] = {
@@ -23,72 +24,18 @@ UNIT_TYPE_BOOST: dict[str, float] = {
     "table":     0.03,
     "glossary":  0.00,
     "paragraph": 0.00,
-    "heading": -0.05,
+    "heading":  -0.05,
 }
 
 type DocResult = dict
 
 
-embed_model = SentenceTransformer(EMBED_MODEL, local_files_only=True)
+embed_model = BgeM3Embedder(EMBED_MODEL, local_files_only=True)
 qdrant = QdrantClient(url=QDRANT_URL)
-
-documents: list[str] = []
-metadatas: list[dict] = []
-doc_ids: list[str] = []
-bm25: BM25Okapi | None = None
 
 
 def _tokenize(text: str) -> list[str]:
     return re.sub(r"[^\w\s]", " ", text.lower()).split()
-
-
-def _enrich_text(text: str, meta: dict) -> str:
-    section = meta.get("section", "").strip()
-    if section and section not in text:
-        return f"{section}\n{text}"
-    return text
-
-
-def _init_bm25() -> None:
-    global documents, metadatas, doc_ids, bm25
-    try:
-        documents, metadatas, doc_ids = [], [], []
-        offset = None
-        while True:
-            records, offset = qdrant.scroll(
-                collection_name=QDRANT_COLLECTION,
-                limit=512,
-                offset=offset,
-                with_payload=True,
-                with_vectors=False,
-            )
-            for rec in records:
-                payload = rec.payload or {}
-                text = payload.get("text", "")
-                if not text:
-                    continue
-                doc_ids.append(rec.id)
-                documents.append(text)
-                metadatas.append(payload)
-            if offset is None:
-                break
-        print(f"[retrieval] Загружено {len(documents)} документов из Qdrant")
-    except Exception as exc:
-        print(f"[retrieval] Ошибка загрузки из Qdrant: {exc}")
-        documents, metadatas, doc_ids = [], [], []
-
-    if documents:
-        enriched = [_enrich_text(doc, meta)
-                    for doc, meta in zip(documents, metadatas)]
-        tokenized = [_tokenize(t) for t in enriched]
-        bm25 = BM25Okapi(tokenized)
-        print("[retrieval] BM25-индекс создан")
-    else:
-        bm25 = None
-        print("[retrieval] Предупреждение: BM25-индекс не создан — нет документов")
-
-
-_init_bm25()
 
 
 def _chunk_score_boost(meta: dict) -> float:
@@ -138,89 +85,66 @@ def _to_result(chunk_id, text: str, meta: dict, score: float) -> DocResult:
     }
 
 
-def _bm25_search(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
-    if bm25 is None or not documents:
+def _hybrid_search(query: str, limit: int) -> list[DocResult]:
+    """Dense + sparse одним запросом к Qdrant, слияние — RRF на стороне сервера."""
+    try:
+        dense_vecs, sparse_vecs = embed_model.encode([query])
+    except Exception as exc:
+        print(f"[retrieval] Ошибка эмбеддинга запроса: {exc}")
         return []
 
-    tokens = _tokenize(query)
-    scores = bm25.get_scores(tokens)
-    ranked = np.argsort(scores)[::-1][:top_k]
+    prefetch = [
+        models.Prefetch(
+            query=dense_vecs[0].tolist(),
+            using=DENSE_VECTOR,
+            limit=limit,
+            score_threshold=RETRIEVAL_THRESHOLD,
+        ),
+    ]
 
-    results: list[DocResult] = []
-    for idx in ranked:
-        score = float(scores[idx])
-        if score <= 0:
-            continue
-        meta = metadatas[idx] if idx < len(metadatas) else {}
-        results.append(_to_result(doc_ids[idx], documents[idx], meta, score))
-    return results
+    sparse = sparse_vecs[0] if sparse_vecs else {}
+    if sparse:
+        prefetch.append(models.Prefetch(
+            query=models.SparseVector(
+                indices=list(sparse.keys()),
+                values=list(sparse.values()),
+            ),
+            using=SPARSE_VECTOR,
+            limit=limit,
+        ))
 
-
-def _vector_search(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
     try:
-        embedding = embed_model.encode(
-            [query],
-            convert_to_numpy=True,
-            normalize_embeddings=True,
-        )[0].tolist()
-
         raw = qdrant.query_points(
             collection_name=QDRANT_COLLECTION,
-            query=embedding,
-            using="dense",
-            limit=top_k * 2,
+            prefetch=prefetch,
+            query=models.FusionQuery(fusion=models.Fusion.RRF),
+            limit=limit,
             with_payload=True,
         )
-
-        results: list[DocResult] = []
-        for point in raw.points:
-            score = float(point.score)
-            if score < RETRIEVAL_THRESHOLD:
-                continue
-            meta = point.payload or {}
-            results.append(_to_result(
-                point.id, meta.get("text", ""), meta, score))
-        return results
-
     except Exception as exc:
         print(f"[retrieval] Qdrant query error: {exc}")
         return []
 
+    results: list[DocResult] = []
+    for point in raw.points:
+        meta = point.payload or {}
+        text = meta.get("text", "")
+        if not text:
+            continue
+        results.append(_to_result(point.id, text, meta, float(point.score)))
+    return results
 
-def _rrf_merge(
-    vector_results: list[DocResult],
-    bm25_results:   list[DocResult],
-    top_k:          int,
-) -> list[DocResult]:
-    merged: dict[str, DocResult] = {}
 
-    for rank, r in enumerate(vector_results):
-        key = r["chunk_id"]
-        rrf = 1.0 / (RRF_K + rank + 1)
-        if key not in merged:
-            merged[key] = {**r, "score": 0.0}
-        merged[key]["score"] += rrf
+def retrieve(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
+    candidates = _hybrid_search(query, top_k * PREFETCH_MULTIPLIER)
 
-    for rank, r in enumerate(bm25_results):
-        key = r["chunk_id"]
-        rrf = 1.0 / (RRF_K + rank + 1)
-        if key not in merged:
-            merged[key] = {**r, "score": 0.0}
-        merged[key]["score"] += rrf
-
-    for r in merged.values():
+    for r in candidates:
         r["score"] += _chunk_score_boost(r.get("_meta", {}))
 
-    ranked = sorted(merged.values(), key=lambda x: x["score"], reverse=True)
+    ranked = sorted(candidates, key=lambda x: x["score"], reverse=True)
     deduped = _deduplicate(ranked)
 
     for r in deduped:
         r.pop("_meta", None)
 
     return deduped[:top_k]
-
-
-def retrieve(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
-    vector = _vector_search(query, top_k * 2)
-    bm25_ = _bm25_search(query, top_k * 2)
-    return _rrf_merge(vector, bm25_, top_k)
