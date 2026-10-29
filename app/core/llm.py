@@ -1,5 +1,7 @@
 from __future__ import annotations
 from typing import Generator
+import re
+
 import ollama
 
 from app.core.retrieval import retrieve, lookup_glossary, expand_query, DocResult
@@ -66,13 +68,17 @@ def _rag_prompt(
     question: str,
     instructions: str | None = None,
 ) -> str:
-    context = "\n\n".join(
-        f"[Источник {i}]\n{d['text']}" for i, d in enumerate(docs, 1)
-    )
+    if docs:
+        context = "\n\n".join(
+            f"[Источник {i}]\n{d['text']}" for i, d in enumerate(docs, 1)
+        )
+    else:
+        context = "(в базе знаний по вопросу ничего не найдено)"
     return f"""Ты русскоязычный AI ассистент.
 Отвечай ТОЛЬКО на русском языке.
-Используй ТОЛЬКО ту информацию из контекста, которая действительно нужна для ответа.
-Если информация не использовалась — НЕ УПОМИНАЙ источник.
+Отвечай СТРОГО на основании приведённого контекста.
+Если в контексте нет ответа на вопрос — прямо напиши, что в положении такая информация не найдена, и НЕ додумывай.
+Не выдумывай нормы, сроки и критерии, которых нет в контексте.
 {_instructions_block(instructions)}
 Контекст:
 {context}
@@ -86,14 +92,43 @@ def _rag_prompt(
 Ответ:""".strip()
 
 
+_STOPWORDS = frozenset({
+    "и", "в", "во", "не", "на", "по", "с", "со", "к", "ко", "о", "об", "от", "до",
+    "из", "за", "для", "при", "как", "что", "это", "этот", "эта", "или", "а", "но",
+    "да", "же", "бы", "то", "так", "уже", "ещё", "если", "также", "который",
+    "которая", "которое", "которые", "все", "весь", "вся", "всё", "более", "менее",
+    "без", "под", "над", "у", "которых",
+})
+
+
+def _tokenize(text: str) -> list[str]:
+    return re.sub(r"[^\w\s]", " ", text.lower()).split()
+
+
 def find_used_sources(answer: str, docs: list[DocResult]) -> list[str]:
-    lower = answer.lower()
-    used: set[str] = set()
+    """Источники, реально использованные в ответе: пересечение слов ответа и чанка
+    (без стоп-слов, порог по доле покрытия, а не по абсолютному числу слов)."""
+    answer_words = {w for w in _tokenize(answer) if w not in _STOPWORDS and len(w) > 2}
+    if not answer_words:
+        return []
+
+    scored: list[tuple[str, float]] = []
     for doc in docs:
-        overlap = sum(1 for w in doc["text"].lower().split() if w in lower)
-        if overlap > 5:
-            used.add(doc["source"])
-    return sorted(used)
+        doc_words = [w for w in _tokenize(doc["text"]) if w not in _STOPWORDS and len(w) > 2]
+        if not doc_words:
+            continue
+        overlap = len(answer_words & set(doc_words))
+        fraction = overlap / len(doc_words)
+        if overlap >= 3 and fraction >= 0.1:
+            scored.append((doc["source"], fraction))
+
+    used: list[str] = []
+    seen: set[str] = set()
+    for src, _ in sorted(scored, key=lambda x: -x[1]):
+        if src not in seen:
+            seen.add(src)
+            used.append(src)
+    return used
 
 
 def stream_answer(
@@ -110,11 +145,8 @@ def stream_answer(
         glossary_hits = lookup_glossary(question)
         if glossary_hits:
             docs = glossary_hits + docs
-        if not docs:
-            prompt = _general_prompt(history, question, instructions)
-            docs = None
-        else:
-            prompt = _rag_prompt(docs, history, question, instructions)
+
+        prompt = _rag_prompt(docs, history, question, instructions)
 
     yield "", None, docs, None
 
