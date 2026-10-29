@@ -13,10 +13,17 @@ class Settings(BaseSettings):
     OLLAMA_HOST: str = "http://localhost:11434"
 
     EMBED_DEVICE: str | None = None
-    EMBED_LOCAL_FILES_ONLY: bool = True
+    EMBED_LOCAL_FILES_ONLY: bool = False
+
+    RERANK_MODEL: str = "BAAI/bge-reranker-v2-m3"
+    RERANK_ENABLED: bool = True
+    RERANK_ALPHA: float = 0.5
+
+    RETRIEVAL_THRESHOLD: float = 0.35
 
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6336
+    QDRANT_COLLECTION: str = "rag_docs_hybrid"
 
     HISTORY_LIMIT: int = 10
 

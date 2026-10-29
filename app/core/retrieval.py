@@ -10,7 +10,7 @@ from app.core.glossary import Glossary
 
 
 QDRANT_URL = settings.qdrant_url
-QDRANT_COLLECTION = "rag_docs_hybrid"
+QDRANT_COLLECTION = settings.QDRANT_COLLECTION
 EMBED_MODEL = settings.EMBED_MODEL
 
 

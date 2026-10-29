@@ -61,6 +61,8 @@ _DEFAULT_QDRANT_URL = (
     f":{os.getenv('QDRANT_PORT', '6336')}"
 )
 
+_DEFAULT_COLLECTION = os.getenv("QDRANT_COLLECTION", "rag_docs_hybrid")
+
 # Семантика title-уровней MinerU: 1..3 — заголовки разделов,
 # 4..7 — пункты норм, 10 — колонтитулы/номера страниц.
 HEADING_MAX_LEVEL = 3
@@ -582,7 +584,7 @@ def main() -> None:
         description="Индексация MinerU (JSON) → Qdrant")
     parser.add_argument("--input_dir",     required=True,  type=Path)
     parser.add_argument("--qdrant_url",    default=_DEFAULT_QDRANT_URL)
-    parser.add_argument("--collection",    default="rag_docs_hybrid")
+    parser.add_argument("--collection",    default=_DEFAULT_COLLECTION)
     parser.add_argument("--model",         default=DEFAULT_MODEL)
     parser.add_argument("--chunk_size",    type=int,
                         default=800)
