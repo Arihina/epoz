@@ -5,7 +5,7 @@ import re
 from qdrant_client import QdrantClient, models
 
 from app.core.config import settings
-from app.core.embedder import DENSE_VECTOR, SPARSE_VECTOR, BgeM3Embedder
+from app.core.embedder import DENSE_VECTOR, SPARSE_VECTOR, BgeM3Embedder, Reranker
 from app.core.glossary import Glossary
 
 
@@ -14,10 +14,10 @@ QDRANT_COLLECTION = "rag_docs_hybrid"
 EMBED_MODEL = settings.EMBED_MODEL
 
 
-RETRIEVAL_THRESHOLD = 0.35
 RETRIEVAL_TOP_K = 10
 
 PREFETCH_MULTIPLIER = 2
+RERANK_CANDIDATE_MULTIPLIER = 4
 DEDUP_THRESHOLD = 0.85
 
 UNIT_TYPE_BOOST: dict[str, float] = {
@@ -60,6 +60,18 @@ embed_model = BgeM3Embedder(
 )
 
 glossary = Glossary(qdrant, QDRANT_COLLECTION)
+
+reranker = None
+if settings.RERANK_ENABLED:
+    try:
+        reranker = Reranker(
+            settings.RERANK_MODEL,
+            local_files_only=settings.EMBED_LOCAL_FILES_ONLY,
+            device=settings.EMBED_DEVICE,
+        )
+    except Exception as exc:
+        print(f"[retrieval] Reranker недоступен, переранжирование отключено: {exc}")
+        reranker = None
 
 
 def _tokenize(text: str) -> list[str]:
@@ -117,7 +129,7 @@ def _hybrid_search(query: str, limit: int) -> list[DocResult]:
             query=dense_vecs[0].tolist(),
             using=DENSE_VECTOR,
             limit=limit,
-            score_threshold=RETRIEVAL_THRESHOLD,
+            score_threshold=settings.RETRIEVAL_THRESHOLD,
         ),
     ]
 
@@ -164,8 +176,34 @@ def expand_query(query: str) -> str:
     return glossary.expand(query)
 
 
+def _minmax(scores: list[float]) -> list[float]:
+    lo, hi = min(scores), max(scores)
+    if hi - lo < 1e-9:
+        return [0.5] * len(scores)
+    return [(s - lo) / (hi - lo) for s in scores]
+
+
+def _rerank(query: str, candidates: list[DocResult]) -> list[DocResult]:
+    """Смесь RRF-скора и cross-encoder'а: RERANK_ALPHA — вес cross-encoder'а."""
+    texts = [c["text"] for c in candidates]
+    cross = reranker.score(query, texts)
+    rrf = [c["score"] for c in candidates]
+
+    cross_norm = _minmax(cross)
+    rrf_norm = _minmax(rrf)
+
+    alpha = settings.RERANK_ALPHA
+    for c, cn, rn in zip(candidates, cross_norm, rrf_norm):
+        c["score"] = alpha * cn + (1 - alpha) * rn
+    return candidates
+
+
 def retrieve(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
-    candidates = _hybrid_search(query, top_k * PREFETCH_MULTIPLIER)
+    multiplier = RERANK_CANDIDATE_MULTIPLIER if reranker else PREFETCH_MULTIPLIER
+    candidates = _hybrid_search(query, top_k * multiplier)
+
+    if reranker is not None:
+        candidates = _rerank(query, candidates)
 
     for r in candidates:
         r["score"] += _chunk_score_boost(r.get("_meta", {}))

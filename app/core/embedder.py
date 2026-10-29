@@ -18,7 +18,7 @@ from typing import Sequence
 
 import numpy as np
 import torch
-from FlagEmbedding import BGEM3FlagModel
+from FlagEmbedding import BGEM3FlagModel, FlagReranker
 from huggingface_hub import snapshot_download
 
 DENSE_VECTOR = "dense"
@@ -112,3 +112,31 @@ class BgeM3Embedder:
             for token_id, weight in weights.items()
             if float(weight) > 0
         }
+
+
+class Reranker:
+    """Cross-encoder для переранжирования кандидатов (bge-reranker-v2-m3)."""
+
+    def __init__(
+        self,
+        model_name: str,
+        *,
+        local_files_only: bool = True,
+        device: str | None = None,
+    ) -> None:
+        self.model_path = resolve_model_path(model_name, local_files_only)
+        self.device = device or pick_device()
+        self.model = FlagReranker(
+            self.model_path,
+            use_fp16=self.device.startswith("cuda"),
+            devices=self.device,
+        )
+
+    def score(self, query: str, texts: Sequence[str]) -> list[float]:
+        """Релевантность каждой пары (query, text) — список скоуров той же длины."""
+        if not texts:
+            return []
+        scores = self.model.compute_score([[query, t] for t in texts])
+        if isinstance(scores, (int, float)):
+            scores = [scores]
+        return [float(s) for s in scores]
