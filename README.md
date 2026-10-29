@@ -43,7 +43,11 @@ python3 main.py
 
 > Коллекция `rag_docs_hybrid` хранит два именованных вектора: `dense` (1024, cosine) и `sparse` (лексические веса BGE-M3). Поиск гибридный — Qdrant сливает обе ветки через RRF. Если коллекция создана старой версией скрипта (только `dense`), индексация остановится с подсказкой: пересоздайте коллекцию с `--reset`.
 
-> Модель `BAAI/bge-m3` должна лежать в кэше HuggingFace заранее (сервис грузит её в офлайн-режиме): `huggingface-cli download BAAI/bge-m3`.
+> Модели нужно заранее положить в кэш HuggingFace (при `EMBED_LOCAL_FILES_ONLY=true` сервис грузит их офлайн):
+> ```bash
+> huggingface-cli download BAAI/bge-m3
+> huggingface-cli download BAAI/bge-reranker-v2-m3
+> ```
 
 > Схему ведёт только Alembic — приложение не создаёт таблицы при старте. `alembic upgrade head` обязателен перед первым запуском, иначе сервис упадёт при первом запросе.
 
@@ -135,20 +139,62 @@ message_feedback
 
 Все идентификаторы — UUID, генерируются на стороне приложения (`default=uuid4`). `chat_messages` скоупится напрямую по `user_id`; принадлежность чату (`conversation_id`) опциональна. Удаление `conversation` каскадно удаляет её сообщения; удаление сообщения каскадно удаляет его фидбэк.
 
-## Models
-Так же модели настраиваются через `.env`
-```
+## Модели и настройки
+
+Все параметры задаются в `.env`. Обязательные:
+
+```env
 EMBED_MODEL=BAAI/bge-m3
-OLLAMA_MODEL=qwen3.6:35b
-HISTORY_LIMIT=10
+OLLAMA_MODEL=qwen3.6:35b        # генерация (в проде крупнее; для отладки — gemma2:9b)
+OLLAMA_HOST=http://localhost:11434
+DB_HOST=localhost
+DB_PORT=5433
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_NAME=rag_db
 ```
-или
+
+Опциональные (показаны значения по умолчанию):
+
+```env
+# Qdrant
+QDRANT_HOST=localhost
+QDRANT_PORT=6336
+QDRANT_COLLECTION=rag_docs_hybrid
+
+# эмбеддер BGE-M3
+EMBED_DEVICE=                  # пусто = авто (cuda:0 при GPU, иначе CPU)
+EMBED_LOCAL_FILES_ONLY=false   # true = только из локального кэша HF (офлайн)
+
+# reranker (cross-encoder)
+RERANK_MODEL=BAAI/bge-reranker-v2-m3
+RERANK_ENABLED=true
+RERANK_ALPHA=0.5               # вес cross-encoder в смеси с RRF (0 — только RRF, 1 — только reranker)
+
+# поиск
+RETRIEVAL_THRESHOLD=0.35       # порог cosine для dense-префетча
+QUERY_REWRITE=true             # переписывать вопрос через LLM при наличии истории
+
+HISTORY_LIMIT=10               # сколько последних сообщений чата подтягивать в /v1/responses
 ```
-EMBED_MODEL=intfloat/multilingual-e5-small
-OLLAMA_MODEL=gemma2:9b
-HISTORY_LIMIT=10
+
+`HISTORY_LIMIT` влияет только на форму Responses с `conversation_id`; на Chat Completions не влияет (там история всегда из тела запроса).
+
+## Как устроен поиск
+
+1. **Разбиение** (`create_collection_hybrid.py`): MinerU-вывод → юниты трёх типов — `glossary` (термины/аббревиатуры), `clause` (пункты норм с путём раздела и текстом родительских пунктов), `table` (строки таблиц с шапкой). Заголовки идут в поле `section`, оглавление и колонтитулы отбрасываются.
+2. **Индексация** в Qdrant: две векторные ноги на точку — `dense` (BGE-M3, 1024, cosine) и `sparse` (лексические веса BGE-M3).
+3. **Поиск** (`app/core/retrieval.py`): dense+sparse префетчи → слияние **RRF** на стороне Qdrant → топ-40 пере-скоривает **cross-encoder** и смешивает с RRF (`RERANK_ALPHA`) → дедуп по Жаккару → топ-10.
+4. **Генерация** (`app/core/llm.py`): глоссарный вопрос → точное определение из глоссария; расширение аббревиатур в запросе; **query rewriting** через LLM при истории (многоходовые «а какие сроки»); **grounding** — ответ строго по контексту, а если ответа нет — «в положении не найдено», без выдумывания.
+
+## Оценка качества
+
+```bash
+python eval/evaluate.py --top 10        # recall@10 / mrr / nDCG@10 по эталонному набору
+python eval/grounding_check.py          # живые запросы + многоходовый пример
 ```
-`HISTORY_LIMIT` — сколько последних сообщений чата подтягивать из БД в форме Responses при переданном `conversation_id` (см. ниже). На форму Chat Completions не влияет — там истории из БД не бывает вообще, только из тела запроса.
+
+Эталоны — `eval/golden.json` (вопрос → релевантные документы/разделы). Нужны поднятые Qdrant и Ollama, модели в кэше.
 
 ## API
 
