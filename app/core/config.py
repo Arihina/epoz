@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     RERANK_ALPHA: float = 0.5
 
     RETRIEVAL_THRESHOLD: float = 0.35
+    QUERY_REWRITE: bool = True
 
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6336

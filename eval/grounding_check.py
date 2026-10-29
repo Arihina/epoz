@@ -23,11 +23,11 @@ QUERIES = [
 ]
 
 
-def ask(question: str) -> tuple[str, list[str] | None, list | None]:
+def ask(question: str, history: list[tuple[str, str]] | None = None) -> tuple[str, list[str] | None, list | None]:
     answer = ""
     used: list[str] | None = None
     docs = None
-    for token, used_src, d, _usage in stream_answer(question, []):
+    for token, used_src, d, _usage in stream_answer(question, history or []):
         if d is not None:
             docs = d
         if token:
@@ -46,6 +46,17 @@ def main() -> None:
         print("ОТВЕТ  :", answer.strip())
         print("ИСТОЧНИКИ:", ", ".join(used) if used else "—")
         print()
+
+    print("#" * 78)
+    print("МНОГОХОДОВЫЙ ПРИМЕР (#6 query rewriting)")
+    first_q = "какой минимальный срок подачи заявок на конкурс"
+    a1, _, _ = ask(first_q)
+    print("Q1:", first_q)
+    print("A1:", a1.strip()[:250], "...")
+    print()
+    a2, _, _ = ask("а для аукциона?", [("user", first_q), ("assistant", a1)])
+    print("Q2: а для аукциона?")
+    print("A2:", a2.strip())
 
 
 if __name__ == "__main__":

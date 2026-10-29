@@ -131,6 +131,42 @@ def find_used_sources(answer: str, docs: list[DocResult]) -> list[str]:
     return used
 
 
+_REWRITE_PROMPT = """Ты готовишь поисковый запрос для поиска по Единому положению о закупках Госкорпорации «Ростех».
+Учитывая диалог, перепиши последний вопрос пользователя в самостоятельный поисковый запрос:
+- раскрой местоимения и эллипсис («это», «он», «а какие сроки») через контекст;
+- замени аббревиатуры на расшифровки, где знаешь;
+- верни ТОЛЬКО поисковый запрос, без пояснений и кавычек.
+
+Диалог:
+{history}
+
+Последний вопрос:
+{question}
+
+Поисковый запрос:"""
+
+
+def _rewrite_query(question: str, history: list[tuple[str, str]]) -> str:
+    """Переписать вопрос в самостоятельный поисковый запрос с учётом истории."""
+    if not history:
+        return question
+    prompt = _REWRITE_PROMPT.format(
+        history=_format_history(history),
+        question=question,
+    )
+    try:
+        resp = _client.chat(
+            model=OLLAMA_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            stream=False,
+        )
+        rewritten = (resp.get("message", {}).get("content") or "").strip()
+        return rewritten or question
+    except Exception as exc:
+        print(f"[llm] Ошибка переписывания запроса: {exc}")
+        return question
+
+
 def stream_answer(
     question: str,
     history: list[tuple[str, str]],
@@ -141,7 +177,8 @@ def stream_answer(
         prompt = _general_prompt(history, question, instructions)
         docs = None
     else:
-        docs = retrieve(expand_query(question))
+        search_query = _rewrite_query(question, history) if settings.QUERY_REWRITE else question
+        docs = retrieve(expand_query(search_query))
         glossary_hits = lookup_glossary(question)
         if glossary_hits:
             docs = glossary_hits + docs
