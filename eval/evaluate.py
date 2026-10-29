@@ -65,10 +65,11 @@ METRICS = {
 }
 
 
-def evaluate(queries: list[dict], retrieve_fn, top_k: int = 10) -> tuple[dict, list[dict]]:
+def evaluate(queries: list[dict], retrieve_fn, top_k: int = 10, debug: bool = False) -> tuple[dict, list[dict]]:
     """Прогнать запросы через retrieve_fn и посчитать метрики.
 
     Возвращает (сводка {метрика: среднее}, построчные результаты).
+    При debug=True в строку дополнительно кладётся список извлечённых чанков.
     """
     summary = {name: [] for name in METRICS}
     rows: list[dict] = []
@@ -79,11 +80,13 @@ def evaluate(queries: list[dict], retrieve_fn, top_k: int = 10) -> tuple[dict, l
             value = fn(docs, q)
             row[name] = round(value, 4)
             summary[name].append(value)
+        if debug:
+            row["docs"] = docs
         rows.append(row)
     return {name: round(sum(v) / len(v), 4) for name, v in summary.items()}, rows
 
 
-def print_report(summary: dict, rows: list[dict]) -> None:
+def print_report(summary: dict, rows: list[dict], debug: bool = False) -> None:
     print("\n=== Сводка (среднее) ===")
     for name, value in summary.items():
         print(f"  {name:9s} {value:.4f}")
@@ -92,11 +95,24 @@ def print_report(summary: dict, rows: list[dict]) -> None:
         metrics = " ".join(f"{m}={r[m]}" for m in METRICS)
         print(f"  [{r['retrieved']:2d}] {r['query'][:55]:55s} {metrics}")
 
+    if debug:
+        for r in rows:
+            if r["recall@k"] >= 1.0:
+                continue
+            print(f"\n--- «{r['query']}» (recall={r['recall@k']}) ---")
+            for i, d in enumerate(r.get("docs", [])[:5], 1):
+                src = d.get("source", "")
+                sec = (d.get("section") or "")[:45]
+                txt = (d.get("text") or "").replace("\n", " ")
+                print(f"  {i}. [{d.get('score', 0):.3f}] {src} | {sec:45s} | {txt[:70]!r}")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Оценка качества retrieval")
     parser.add_argument("--golden", default=str(Path(__file__).parent / "golden.json"))
     parser.add_argument("--top", type=int, default=10)
+    parser.add_argument("--debug", action="store_true",
+                        help="Показать извлечённые чанки для запросов с recall<1")
     args = parser.parse_args()
 
     queries = json.loads(Path(args.golden).read_text(encoding="utf-8"))
@@ -109,8 +125,8 @@ def main() -> None:
     # Ленивый импорт: нужны поднятый Qdrant и загруженная модель.
     from app.core.retrieval import retrieve
 
-    summary, rows = evaluate(queries, retrieve, args.top)
-    print_report(summary, rows)
+    summary, rows = evaluate(queries, retrieve, args.top, debug=args.debug)
+    print_report(summary, rows, debug=args.debug)
 
 
 if __name__ == "__main__":

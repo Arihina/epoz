@@ -129,16 +129,51 @@ def _table_grid_from_content(content: dict) -> list[list[str]]:
     return grid
 
 
+def _with_section(section: str, text: str) -> str:
+    """Дописать путь раздела в текст чанка, чтобы заголовки участвовали в поиске."""
+    return f"{section}\n{text}".strip() if section else text
+
+
+def _doc_title(blocks: list[dict]) -> str:
+    """Заголовок приложения: первый содержательный абзац после титульной страницы."""
+    markers = ("Приложение", "Единому Положению", "Государственной корпорации")
+    i = 0
+    while i < len(blocks):
+        b = blocks[i]
+        if b["kind"] == "text" and any(m in b.get("text", "") for m in markers):
+            i += 1
+            continue
+        break
+    for b in blocks[i:]:
+        if b["kind"] in ("table", "list"):
+            break
+        if b["kind"] in ("text", "title"):
+            t = (b.get("text") or "").strip()
+            if t:
+                return t
+    return ""
+
+
+def _doc_prefix(source_name: str, title: str = "") -> str:
+    """Тема приложения (имя папки + заголовок) — дописываем её в текст чанка."""
+    if not source_name.startswith("Приложение"):
+        return ""
+    prefix = source_name.replace("_", " ").strip()
+    if title and title.lower() not in prefix.lower():
+        prefix = f"{prefix} {title}".strip()
+    return prefix + "\n"
+
+
 def _table_units(grid: list[list[str]], section: str, anchor: str) -> list[dict]:
     if not grid:
         return []
     if len(grid) == 1:
-        return [{"text": " | ".join(grid[0]), "section": section,
-                 "anchor": anchor, "unit_type": "table"}]
+        return [{"text": _with_section(section, " | ".join(grid[0])),
+                 "section": section, "anchor": anchor, "unit_type": "table"}]
     header = " | ".join(grid[0])
     units = []
     for row in grid[1:]:
-        units.append({"text": header + "\n" + " | ".join(row),
+        units.append({"text": _with_section(section, header + "\n" + " | ".join(row)),
                       "section": section, "anchor": anchor, "unit_type": "table"})
     return units
 
@@ -290,8 +325,9 @@ def build_units(blocks: list[dict], chunk_size: int, chunk_overlap: int) -> list
         nonlocal buffer_text, buffer_anchor
         text = buffer_text.strip()
         if text:
+            sec = section()
             for part in _split_long_text(text, chunk_size, chunk_overlap):
-                units.append({"text": part, "section": section(),
+                units.append({"text": _with_section(sec, part), "section": sec,
                               "anchor": buffer_anchor, "unit_type": "clause"})
         buffer_text, buffer_anchor = "", ""
 
@@ -340,8 +376,9 @@ def build_units(blocks: list[dict], chunk_size: int, chunk_overlap: int) -> list
                 full_text = f"{context} {text}".strip() if context else text
                 clause_breadcrumb = {k: v for k, v in clause_breadcrumb.items() if k < level}
                 clause_breadcrumb[level] = text
+                sec = section()
                 for part in _split_long_text(full_text, chunk_size, chunk_overlap):
-                    units.append({"text": part, "section": section(),
+                    units.append({"text": _with_section(sec, part), "section": sec,
                                   "anchor": blk.get("anchor", ""),
                                   "unit_type": "clause"})
 
@@ -377,11 +414,13 @@ def _add_to_collection(
     source_name:  str,
     model_name:   str,
     embedder:     BgeM3Embedder,
+    title:        str = "",
 ) -> int:
     if not units:
         return 0
 
-    texts = [PASSAGE_PREFIX + u["text"] for u in units]
+    prefix = _doc_prefix(source_name, title)
+    texts = [PASSAGE_PREFIX + prefix + u["text"] for u in units]
     dense_vecs, sparse_vecs = embedder.encode(texts)
 
     points = []
@@ -528,8 +567,9 @@ def index_documents(
 
         print(f"  → источник: {fname}")
         units = build_units(blocks, chunk_size, chunk_overlap)
+        title = _doc_title(blocks)
         added = _add_to_collection(
-            client, collection_name, units, source_name, model_name, embedder)
+            client, collection_name, units, source_name, model_name, embedder, title)
         total += added
         print(f"  → юнитов добавлено: {added}")
         print()
