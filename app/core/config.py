@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     QDRANT_PORT: int = 6336
     QDRANT_COLLECTION: str = "rag_docs_hybrid"
 
+    MINERU_API_URL: str
+    MINERU_BACKEND: str = "pipeline"
+    MINERU_LANG: str = "cyrillic"
+    MINERU_TIMEOUT_SECONDS: int = 600
+
     HISTORY_LIMIT: int = 10
 
     @property

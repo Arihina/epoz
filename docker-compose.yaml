@@ -3,7 +3,7 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: rag_db
+      POSTGRES_DB: epoz_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
@@ -18,6 +18,17 @@ services:
       - qdrant_data:/qdrant/storage
     ports:
       - "6336:6333"
+
+  mineru:
+    build:
+      context: ./mineru
+      args:
+        MINERU_MODEL_SOURCE: huggingface
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8010:8010"
+    environment:
+      MINERU_DEVICE_MODE: cpu
 
 volumes:
   postgres_data:
