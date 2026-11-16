@@ -31,14 +31,24 @@ DEFAULT_BATCH_SIZE = 64
 
 
 def resolve_model_path(model_name: str, local_files_only: bool) -> str:
-    """Локальный путь к снапшоту модели в кэше HF (для offline-режима)."""
-    if not local_files_only:
-        return model_name
+    """Локальный путь к снапшоту модели в кэше HF.
+
+    Всегда резолвим в локальный snapshot-путь, даже при ``local_files_only=False``.
+    Если отдать transformers remote-id как есть (``BAAI/bge-m3``), то при загрузке
+    fast-токенизатора (у BGE-M3 это XLM-RoBERTa с vocab > 100k) transformers 5.x
+    делает сетевой вызов ``huggingface_hub.model_info`` — проверка «базовый ли это
+    mistral» — ещё до обращения к кэшу. Без сети это падает с ``ConnectError:
+    Temporary failure in name resolution`` даже если модель уже скачана.
+
+    Локальный путь делает модель локальной (``is_local=True``), и этот сетевой
+    вызов пропускается. ``snapshot_download`` при этом сам отдаёт уже скачанный
+    снапшот из кэша без сети (fallback на ``refs/`` и ``snapshots/``).
+    """
     try:
-        return snapshot_download(model_name, local_files_only=True)
+        return snapshot_download(model_name, local_files_only=local_files_only)
     except Exception as exc:
         raise RuntimeError(
-            f"Модель {model_name} не найдена в локальном кэше HuggingFace. "
+            f"Модель {model_name} недоступна локально (local_files_only={local_files_only}). "
             f"Скачайте её заранее: huggingface-cli download {model_name}"
         ) from exc
 
