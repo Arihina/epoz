@@ -40,3 +40,22 @@ async def get_owned_conversation(
     if c is None:
         raise HTTPException(404, "Чат не найден")
     return c
+
+
+def parse_file_id(file_id: str) -> UUID:
+    raw = file_id.removeprefix("file-")
+    try:
+        return UUID(raw)
+    except ValueError:
+        raise HTTPException(422, "Некорректный id файла")
+
+
+async def get_owned_file(
+    file_id: str,
+    user_id: UUID = Depends(get_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    f = await crud.get_file_for_user(db, parse_file_id(file_id), user_id)
+    if f is None:
+        raise HTTPException(404, "Файл не найден")
+    return f

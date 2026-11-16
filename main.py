@@ -11,6 +11,7 @@ from app.api.responses import router as responses_router
 from app.api.feedback import router as feedback_router
 from app.api.sources import router as sources_router
 from app.api.conversations import router as conversations_router
+from app.api.files import router as files_router
 
 
 @asynccontextmanager
@@ -41,6 +42,7 @@ app.include_router(responses_router)
 app.include_router(feedback_router)
 app.include_router(sources_router)
 app.include_router(conversations_router)
+app.include_router(files_router)
 
 
 _ERROR_TYPES = {
