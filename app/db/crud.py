@@ -3,7 +3,8 @@ from typing import Optional
 from uuid import UUID, uuid4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.models import ChatMessage, MessageFeedback, Conversation
+from sqlalchemy.orm import undefer
+from app.models.models import ChatMessage, MessageFeedback, Conversation, File
 
 
 async def create_conversation(db: AsyncSession, user_id, title: Optional[str] = None) -> Conversation:
@@ -180,3 +181,122 @@ async def get_feedback(db: AsyncSession, message_id: UUID) -> Optional[MessageFe
 async def delete_message(db: AsyncSession, msg: ChatMessage) -> None:
     await db.delete(msg)
     await db.commit()
+
+
+async def create_file(
+    db: AsyncSession,
+    user_id,
+    filename: str,
+    mime_type: Optional[str],
+    size_bytes: int,
+    content: bytes,
+    conversation_id: Optional[UUID] = None,
+) -> File:
+    f = File(
+        user_id=user_id,
+        conversation_id=conversation_id,
+        filename=filename,
+        mime_type=mime_type,
+        size_bytes=size_bytes,
+        content=content,
+        status="pending",
+    )
+    db.add(f)
+
+    await db.commit()
+    await db.refresh(f)
+
+    return f
+
+
+async def get_file(db: AsyncSession, file_id: UUID) -> Optional[File]:
+    result = await db.execute(select(File).where(File.id == file_id))
+    return result.scalar_one_or_none()
+
+
+async def get_file_for_user(db: AsyncSession, file_id: UUID, user_id) -> Optional[File]:
+    result = await db.execute(
+        select(File).where(File.id == file_id, File.user_id == user_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_latest_conversation_file(
+    db: AsyncSession, conversation_id: UUID, user_id
+) -> Optional[File]:
+    result = await db.execute(
+        select(File)
+        .where(
+            File.conversation_id == conversation_id,
+            File.user_id == user_id,
+            File.status == "done",
+        )
+        .order_by(File.created_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_file_content(db: AsyncSession, file_id: UUID) -> Optional[File]:
+    result = await db.execute(
+        select(File).options(undefer(File.content)).where(File.id == file_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def list_files(db: AsyncSession, user_id) -> list[File]:
+    result = await db.execute(
+        select(File)
+        .where(File.user_id == user_id)
+        .order_by(File.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+async def delete_file(db: AsyncSession, f: File) -> None:
+    await db.delete(f)
+    await db.commit()
+
+
+async def set_file_processing(db: AsyncSession, f: File) -> File:
+    f.status = "processing"
+
+    await db.commit()
+    await db.refresh(f)
+
+    return f
+
+
+async def set_file_done(
+    db: AsyncSession, f: File, markdown_content: str, ocr_backend: str,
+    markdown_tokens: Optional[int] = None,
+) -> File:
+    f.status = "done"
+    f.markdown_content = markdown_content
+    f.markdown_tokens = markdown_tokens
+    f.ocr_backend = ocr_backend
+    f.error_message = None
+
+    await db.commit()
+    await db.refresh(f)
+
+    return f
+
+
+async def set_file_tokens(db: AsyncSession, f: File, tokens: int) -> File:
+    f.markdown_tokens = tokens
+
+    await db.commit()
+    await db.refresh(f)
+
+    return f
+
+
+async def set_file_failed(db: AsyncSession, f: File, error_message: str) -> File:
+    f.status = "failed"
+    f.error_message = error_message
+
+    await db.commit()
+    await db.refresh(f)
+
+    return f
