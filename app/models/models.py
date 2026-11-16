@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Integer, String, Text, ForeignKey, CheckConstraint,
+    BigInteger, Integer, LargeBinary, String, Text, ForeignKey, CheckConstraint,
     TIMESTAMP,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -104,3 +104,53 @@ class MessageFeedback(Base):
 
     message: Mapped["ChatMessage"] = relationship(
         back_populates="feedback", lazy="selectin")
+
+
+class File(Base):
+    __tablename__ = "files"
+
+    id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid4,
+    )
+    user_id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True,
+    )
+    conversation_id: Mapped[Optional[PyUUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey(
+            "conversations.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    mime_type: Mapped[Optional[str]] = mapped_column(
+        String(127), nullable=True)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    content: Mapped[bytes] = mapped_column(
+        LargeBinary, nullable=False, deferred=True)
+
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending")
+    markdown_content: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True)
+    markdown_tokens: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True)
+    ocr_backend: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'done', 'failed')",
+            name="ck_file_status",
+        ),
+    )
