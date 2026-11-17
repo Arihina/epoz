@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     MINERU_LANG: str = "cyrillic"
     MINERU_TIMEOUT_SECONDS: int = 600
 
+    MAX_ATTACHED_FILES: int = 5
+    DOCUMENT_MAX_CHARS: int = 20000
+
     HISTORY_LIMIT: int = 10
 
     @property
