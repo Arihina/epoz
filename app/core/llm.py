@@ -62,8 +62,28 @@ def _general_prompt(
 Ответ:""".strip()
 
 
+def _format_attached_documents(documents: list) -> str:
+    """Блок приложенных документов. Пока — обрезка по символам
+    (полный токенный бюджет контекста — отдельный шаг, пункт 6.4 плана)."""
+    if not documents:
+        return ""
+
+    parts: list[str] = []
+    for doc in documents:
+        text = doc.markdown
+        truncated = False
+        if len(text) > settings.DOCUMENT_MAX_CHARS:
+            text = text[:settings.DOCUMENT_MAX_CHARS]
+            truncated = True
+        label = f"{doc.filename} (частично)" if truncated else doc.filename
+        parts.append(f"[Документ: {label}]\n{text}")
+
+    return "Приложенный документ:\n" + "\n\n".join(parts) + "\n"
+
+
 def _rag_prompt(
     docs: list[DocResult],
+    documents: list,
     history: list[tuple[str, str]],
     question: str,
     instructions: str | None = None,
@@ -74,6 +94,7 @@ def _rag_prompt(
         )
     else:
         context = "(в базе знаний по вопросу ничего не найдено)"
+    attached = _format_attached_documents(documents)
     return f"""Ты русскоязычный AI ассистент.
 Отвечай ТОЛЬКО на русском языке.
 Отвечай СТРОГО на основании приведённого контекста.
@@ -82,7 +103,7 @@ def _rag_prompt(
 {_instructions_block(instructions)}
 Контекст:
 {context}
-
+{attached}
 Предыдущий диалог:
 {_format_history(history)}
 
@@ -172,18 +193,21 @@ def stream_answer(
     history: list[tuple[str, str]],
     instructions: str | None = None,
     options: dict | None = None,
+    documents: list | None = None,
 ) -> Generator[tuple[str, list[str] | None, list[DocResult] | None, dict | None], None, None]:
-    if is_small_talk(question):
-        prompt = _general_prompt(history, question, instructions)
-        docs = None
-    else:
+    documents = documents or []
+
+    if documents or not is_small_talk(question):
         search_query = _rewrite_query(question, history) if settings.QUERY_REWRITE else question
         docs = retrieve(expand_query(search_query))
         glossary_hits = lookup_glossary(question)
         if glossary_hits:
             docs = glossary_hits + docs
 
-        prompt = _rag_prompt(docs, history, question, instructions)
+        prompt = _rag_prompt(docs, documents, history, question, instructions)
+    else:
+        prompt = _general_prompt(history, question, instructions)
+        docs = None
 
     yield "", None, docs, None
 
@@ -206,10 +230,11 @@ def stream_answer(
             completion_tokens = chunk.get("eval_count", 0) or 0
 
     used_sources: list[str] | None = None
-    if docs:
-        used = find_used_sources(full_answer, docs)
-        if used:
-            used_sources = used
+    attached_names = [d.filename for d in documents]
+    used = find_used_sources(full_answer, docs) if docs else []
+    combined = attached_names + used
+    if combined:
+        used_sources = combined
 
     usage = {
         "prompt_tokens": prompt_tokens,
