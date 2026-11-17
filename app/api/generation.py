@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import HTTPException
 
+from app.core.config import settings
 from app.core.llm import stream_answer
 from app.core.retrieval import DocResult
 from app.db.database import AsyncSessionLocal
@@ -31,6 +32,12 @@ def trim_docs(docs: list[DocResult] | None) -> list[dict] | None:
 
 
 @dataclass
+class Document:
+    filename: str
+    markdown: str
+
+
+@dataclass
 class Generation:
     answer: str = ""
     used_sources: list[str] | None = None
@@ -39,11 +46,44 @@ class Generation:
         "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
 
 
-def collect(question, history, instructions=None, options=None) -> Generation:
+async def resolve_files(
+    db, user_id: UUID, file_uuids: list[UUID],
+) -> list[Document]:
+    if not file_uuids:
+        return []
+
+    if len(file_uuids) > settings.MAX_ATTACHED_FILES:
+        raise HTTPException(
+            400,
+            f"Прикреплено файлов: {len(file_uuids)}, максимум "
+            f"{settings.MAX_ATTACHED_FILES}. Уменьшите число вложений.",
+        )
+
+    docs: list[Document] = []
+    for file_uuid in file_uuids:
+        f = await crud.get_file_for_user(db, file_uuid, user_id)
+        if f is None:
+            raise HTTPException(404, f"Файл {file_uuid} (file_id) не найден")
+        if f.status != "done":
+            raise HTTPException(
+                400,
+                f"Файл «{f.filename}» ещё не готов к использованию "
+                f"(статус обработки: {f.status})",
+            )
+        docs.append(Document(
+            filename=f.filename,
+            markdown=f.markdown_content or "",
+        ))
+
+    return docs
+
+
+def collect(question, history, instructions=None, options=None, documents=None) -> Generation:
     out = Generation()
 
     for token, used, docs, usage in stream_answer(
-        question, history, instructions=instructions, options=options
+        question, history, instructions=instructions, options=options,
+        documents=documents,
     ):
         if docs is not None:
             out.docs = docs
