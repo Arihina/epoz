@@ -15,18 +15,18 @@ from app.db import crud
 from app.core.llm import stream_answer
 from app.core.auth import get_user_id
 from app.core.config import settings
-from app.api.content import RESPONSES_TEXT_TYPES, extract_text
-from app.api.deps import get_owned_completion, parse_completion_id
+from app.api.deps import get_owned_completion, parse_completion_id, parse_file_id
+from app.api.openai_request import (
+    DIALOG_ROLES, INSTRUCTION_ROLES, collect_file_ids,
+    parse_responses_content, reject_inline_attachment,
+)
 from app.api.generation import (
-    collect, format_sources, persist, sampling_options,
+    collect, format_sources, persist, resolve_files, sampling_options,
 )
 
 router = APIRouter(prefix="/v1/responses", tags=["responses"])
 
 DEFAULT_MODEL = "epoz"
-
-_INSTRUCTION_ROLES = ("system", "developer")
-_DIALOG_ROLES = ("user", "assistant")
 
 
 def _conversation_field(body: dict):
@@ -72,7 +72,7 @@ def _extract(body: dict) -> dict:
         question = input_data.strip()
         if not question:
             raise HTTPException(400, "Пустой input")
-        return {**common, "history": [], "question": question}
+        return {**common, "history": [], "question": question, "file_ids_raw": []}
 
     if not isinstance(input_data, list) or not input_data:
         raise HTTPException(
@@ -83,8 +83,9 @@ def _extract(body: dict) -> dict:
         raise HTTPException(
             400, 'последний item в input должен иметь role="user"')
 
-    question = extract_text(last.get("content"), RESPONSES_TEXT_TYPES).strip()
-    if not question:
+    parsed = parse_responses_content(last.get("content"))
+    reject_inline_attachment(parsed)
+    if not parsed.text:
         raise HTTPException(400, "Пустой вопрос")
 
     items = [m for m in input_data[:-1]
@@ -92,8 +93,8 @@ def _extract(body: dict) -> dict:
 
     inline_instructions = "\n".join(
         text for text in (
-            extract_text(m.get("content"), RESPONSES_TEXT_TYPES)
-            for m in items if m.get("role") in _INSTRUCTION_ROLES
+            parse_responses_content(m.get("content")).text
+            for m in items if m.get("role") in INSTRUCTION_ROLES
         ) if text.strip()
     )
     if inline_instructions:
@@ -101,11 +102,14 @@ def _extract(body: dict) -> dict:
             filter(None, [common["instructions"], inline_instructions]))
 
     history = [
-        (m["role"], extract_text(m.get("content"), RESPONSES_TEXT_TYPES))
-        for m in items if m.get("role") in _DIALOG_ROLES
+        (m["role"], parse_responses_content(m.get("content")).text)
+        for m in items if m.get("role") in DIALOG_ROLES
     ]
 
-    return {**common, "history": history, "question": question}
+    return {
+        **common, "history": history, "question": parsed.text,
+        "file_ids_raw": collect_file_ids(input_data, parse_responses_content),
+    }
 
 
 def _usage_out(usage: dict | None) -> dict:
@@ -228,6 +232,14 @@ async def create_response(
                 db, conversation_id, settings.HISTORY_LIMIT)
         ]
 
+    file_uuids = [parse_file_id(x) for x in req["file_ids_raw"]]
+    if not file_uuids and conversation_id is not None:
+        auto = await crud.get_latest_conversation_file(
+            db, conversation_id, user_id)
+        if auto is not None:
+            file_uuids = [auto.id]
+    documents = await resolve_files(db, user_id, file_uuids)
+
     assistant_id = uuid4()
     response_id = f"resp_{assistant_id}"
     item_id = f"msg_{assistant_id}"
@@ -236,7 +248,8 @@ async def create_response(
 
     if not req["stream"]:
         gen = await run_in_threadpool(
-            collect, req["question"], history, req["instructions"], req["options"],
+            collect, req["question"], history, req["instructions"],
+            req["options"], documents,
         )
         answer = gen.answer + format_sources(gen.used_sources)
 
@@ -287,6 +300,7 @@ async def create_response(
         for token, used, docs, usage in stream_answer(
             req["question"], history,
             instructions=req["instructions"], options=req["options"],
+            documents=documents,
         ):
             if first:
                 first = False
