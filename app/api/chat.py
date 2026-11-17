@@ -14,18 +14,18 @@ from app.db import crud
 
 from app.core.llm import stream_answer
 from app.core.auth import get_user_id
-from app.api.content import CHAT_TEXT_TYPES, extract_text
-from app.api.deps import get_owned_completion
+from app.api.deps import get_owned_completion, parse_file_id
+from app.api.openai_request import (
+    DIALOG_ROLES, INSTRUCTION_ROLES, collect_file_ids, parse_chat_content,
+    reject_inline_attachment,
+)
 from app.api.generation import (
-    collect, format_sources, persist, sampling_options,
+    collect, format_sources, persist, resolve_files, sampling_options,
 )
 
 router = APIRouter(prefix="/v1/chat/completions", tags=["chat"])
 
 DEFAULT_MODEL = "epoz"
-
-_INSTRUCTION_ROLES = ("system", "developer")
-_DIALOG_ROLES = ("user", "assistant")
 
 
 def _extract(body: dict) -> dict:
@@ -46,22 +46,23 @@ def _extract(body: dict) -> dict:
         raise HTTPException(
             400, 'последнее сообщение должно иметь role="user"')
 
-    question = extract_text(last.get("content", ""), CHAT_TEXT_TYPES).strip()
-    if not question:
+    parsed = parse_chat_content(last.get("content"))
+    reject_inline_attachment(parsed)
+    if not parsed.text:
         raise HTTPException(400, "Пустой вопрос")
 
     instructions = "\n".join(
         text for text in (
-            extract_text(m.get("content", ""), CHAT_TEXT_TYPES)
+            parse_chat_content(m.get("content")).text
             for m in messages
-            if isinstance(m, dict) and m.get("role") in _INSTRUCTION_ROLES
+            if isinstance(m, dict) and m.get("role") in INSTRUCTION_ROLES
         ) if text.strip()
     ) or None
 
     history = [
-        (m["role"], extract_text(m.get("content", ""), CHAT_TEXT_TYPES))
+        (m["role"], parse_chat_content(m.get("content")).text)
         for m in messages[:-1]
-        if isinstance(m, dict) and m.get("role") in _DIALOG_ROLES
+        if isinstance(m, dict) and m.get("role") in DIALOG_ROLES
     ]
 
     stream_options = body.get("stream_options") or {}
@@ -71,7 +72,8 @@ def _extract(body: dict) -> dict:
     return {
         "model": model,
         "history": history,
-        "question": question,
+        "question": parsed.text,
+        "file_ids_raw": collect_file_ids(messages, parse_chat_content),
         "instructions": instructions,
         "stream": stream,
         "include_usage": bool(stream_options.get("include_usage", False)),
@@ -153,6 +155,14 @@ async def chat_completions(
         if await crud.get_conversation(db, conversation_id, user_id) is None:
             raise HTTPException(404, "Чат (conversation_id) не найден")
 
+    file_uuids = [parse_file_id(x) for x in req["file_ids_raw"]]
+    if not file_uuids and conversation_id is not None:
+        auto = await crud.get_latest_conversation_file(
+            db, conversation_id, user_id)
+        if auto is not None:
+            file_uuids = [auto.id]
+    documents = await resolve_files(db, user_id, file_uuids)
+
     assistant_id = uuid4()
     completion_id = f"chatcmpl-{assistant_id}"
     created = int(time.time())
@@ -161,7 +171,7 @@ async def chat_completions(
     if not req["stream"]:
         gen = await run_in_threadpool(
             collect, req["question"], req["history"],
-            req["instructions"], req["options"],
+            req["instructions"], req["options"], documents,
         )
         answer = gen.answer + format_sources(gen.used_sources)
 
@@ -178,6 +188,7 @@ async def chat_completions(
         for token, used, docs, usage in stream_answer(
             req["question"], req["history"],
             instructions=req["instructions"], options=req["options"],
+            documents=documents,
         ):
             if first:
                 first = False
