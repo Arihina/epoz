@@ -6,13 +6,24 @@ import ollama
 
 from app.core.retrieval import retrieve, lookup_glossary, expand_query, DocResult
 from app.core.config import settings
-
+from app.core.tokens import make_counter
+from app.core.context import build_prompt
 
 OLLAMA_HOST = settings.OLLAMA_HOST
 OLLAMA_MODEL = settings.OLLAMA_MODEL
 
-
 _client = ollama.Client(host=OLLAMA_HOST)
+
+_counter = None
+
+
+def get_counter():
+    """Счётчик токенов создаётся лениво: загрузка токенайзера не должна
+    блокировать старт приложения."""
+    global _counter
+    if _counter is None:
+        _counter = make_counter(settings.TOKENIZER_REPO)
+    return _counter
 
 
 _SMALL_TALK_PATTERNS = (
@@ -53,57 +64,6 @@ def _general_prompt(
 Отвечай свободно, как обычный ассистент.
 Источники указывать НЕ НУЖНО.
 {_instructions_block(instructions)}
-Предыдущий диалог:
-{_format_history(history)}
-
-Вопрос пользователя:
-{question}
-
-Ответ:""".strip()
-
-
-def _format_attached_documents(documents: list) -> str:
-    """Блок приложенных документов. Пока — обрезка по символам
-    (полный токенный бюджет контекста — отдельный шаг, пункт 6.4 плана)."""
-    if not documents:
-        return ""
-
-    parts: list[str] = []
-    for doc in documents:
-        text = doc.markdown
-        truncated = False
-        if len(text) > settings.DOCUMENT_MAX_CHARS:
-            text = text[:settings.DOCUMENT_MAX_CHARS]
-            truncated = True
-        label = f"{doc.filename} (частично)" if truncated else doc.filename
-        parts.append(f"[Документ: {label}]\n{text}")
-
-    return "Приложенный документ:\n" + "\n\n".join(parts) + "\n"
-
-
-def _rag_prompt(
-    docs: list[DocResult],
-    documents: list,
-    history: list[tuple[str, str]],
-    question: str,
-    instructions: str | None = None,
-) -> str:
-    if docs:
-        context = "\n\n".join(
-            f"[Источник {i}]\n{d['text']}" for i, d in enumerate(docs, 1)
-        )
-    else:
-        context = "(в базе знаний по вопросу ничего не найдено)"
-    attached = _format_attached_documents(documents)
-    return f"""Ты русскоязычный AI ассистент.
-Отвечай ТОЛЬКО на русском языке.
-Отвечай СТРОГО на основании приведённого контекста.
-Если в контексте нет ответа на вопрос — прямо напиши, что в положении такая информация не найдена, и НЕ додумывай.
-Не выдумывай нормы, сроки и критерии, которых нет в контексте.
-{_instructions_block(instructions)}
-Контекст:
-{context}
-{attached}
 Предыдущий диалог:
 {_format_history(history)}
 
@@ -188,57 +148,64 @@ def _rewrite_query(question: str, history: list[tuple[str, str]]) -> str:
         return question
 
 
+def build(question, history, instructions, documents):
+    """Ретрив по ЕПоЗ + сборка промпта с учётом контекстного окна.
+
+    Возвращает (prompt, sources, retrieved). ContextOverflow не перехватывается
+    здесь — его ловит транспортный слой и превращает в 413.
+    Small-talk без документа идёт по общему промпту, без бюджета.
+    """
+    if not documents and is_small_talk(question):
+        return _general_prompt(history, question, instructions), None, None
+
+    counter = get_counter()
+    search_query = _rewrite_query(question, history) if settings.QUERY_REWRITE else question
+    retrieved = retrieve(expand_query(search_query))
+    glossary_hits = lookup_glossary(question)
+    if glossary_hits:
+        retrieved = glossary_hits + retrieved
+
+    built = build_prompt(
+        question=question,
+        instructions=instructions,
+        history=history,
+        retrieved=retrieved,
+        documents=documents,
+        counter=counter,
+        num_ctx=settings.CONTEXT_WINDOW,
+        reserve_output=settings.RESERVE_OUTPUT_TOKENS,
+        safety=settings.CONTEXT_SAFETY_TOKENS,
+        history_min_tokens=settings.HISTORY_MIN_TOKENS,
+        overflow=settings.DOCUMENT_OVERFLOW,
+    )
+    print(f"[llm] {built.stats.as_log()}")
+    return built.prompt, built.sources, retrieved
+
+
 def stream_answer(
-    question: str,
-    history: list[tuple[str, str]],
-    instructions: str | None = None,
+    prompt: str,
     options: dict | None = None,
-    documents: list | None = None,
-) -> Generator[tuple[str, list[str] | None, list[DocResult] | None, dict | None], None, None]:
-    documents = documents or []
-
-    if documents or not is_small_talk(question):
-        search_query = _rewrite_query(question, history) if settings.QUERY_REWRITE else question
-        docs = retrieve(expand_query(search_query))
-        glossary_hits = lookup_glossary(question)
-        if glossary_hits:
-            docs = glossary_hits + docs
-
-        prompt = _rag_prompt(docs, documents, history, question, instructions)
-    else:
-        prompt = _general_prompt(history, question, instructions)
-        docs = None
-
-    yield "", None, docs, None
-
+) -> Generator[tuple[str, dict | None], None, None]:
+    """LLM-стрим по готовому промпту. Yields (token, usage)."""
     stream = _client.chat(
         model=OLLAMA_MODEL,
         messages=[{"role": "user", "content": prompt}],
         stream=True,
         options=options or None,
     )
-    full_answer = ""
     prompt_tokens = 0
     completion_tokens = 0
     for chunk in stream:
         token: str = chunk["message"]["content"]
-        full_answer += token
         if token:
-            yield token, None, None, None
+            yield token, None
         if chunk.get("done"):
             prompt_tokens = chunk.get("prompt_eval_count", 0) or 0
             completion_tokens = chunk.get("eval_count", 0) or 0
-
-    used_sources: list[str] | None = None
-    attached_names = [d.filename for d in documents]
-    used = find_used_sources(full_answer, docs) if docs else []
-    combined = attached_names + used
-    if combined:
-        used_sources = combined
 
     usage = {
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": prompt_tokens + completion_tokens,
     }
-    yield "", used_sources, None, usage
+    yield "", usage
