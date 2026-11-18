@@ -32,7 +32,13 @@ class Settings(BaseSettings):
     MINERU_TIMEOUT_SECONDS: int = 600
 
     MAX_ATTACHED_FILES: int = 5
-    DOCUMENT_MAX_CHARS: int = 20000
+
+    CONTEXT_WINDOW: int = 32768
+    RESERVE_OUTPUT_TOKENS: int = 4096
+    CONTEXT_SAFETY_TOKENS: int = 128
+    HISTORY_MIN_TOKENS: int = 2048
+    TOKENIZER_REPO: str | None = None
+    DOCUMENT_OVERFLOW: str = "truncate"
 
     HISTORY_LIMIT: int = 10
 
