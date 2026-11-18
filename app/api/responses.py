@@ -7,12 +7,12 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
+from starlette.concurrency import iterate_in_threadpool
 
 from app.db.database import get_db
 from app.db import crud
 
-from app.core.llm import stream_answer
+from app.core.llm import find_used_sources, stream_answer
 from app.core.auth import get_user_id
 from app.core.config import settings
 from app.api.deps import get_owned_completion, parse_completion_id, parse_file_id
@@ -21,7 +21,7 @@ from app.api.openai_request import (
     parse_responses_content, reject_inline_attachment,
 )
 from app.api.generation import (
-    collect, format_sources, persist, resolve_files, sampling_options,
+    format_sources, generate, persist, prepare, resolve_files, sampling_options,
 )
 
 router = APIRouter(prefix="/v1/responses", tags=["responses"])
@@ -247,8 +247,8 @@ async def create_response(
     conversation_id_str = str(conversation_id) if conversation_id else None
 
     if not req["stream"]:
-        gen = await run_in_threadpool(
-            collect, req["question"], history, req["instructions"],
+        gen = await generate(
+            req["question"], history, req["instructions"],
             req["options"], documents,
         )
         answer = gen.answer + format_sources(gen.used_sources)
@@ -263,7 +263,10 @@ async def create_response(
             usage=_usage_out(gen.usage), req=req,
         )
 
-    state = {"answer": "", "used_sources": None, "docs": None, "usage": None}
+    prompt, sources, retrieved = await prepare(
+        req["question"], history, req["instructions"], documents,
+    )
+    state = {"answer": "", "used_sources": None, "docs": retrieved, "usage": None}
 
     def _gen():
         seq = 0
@@ -296,17 +299,7 @@ async def create_response(
                   "annotations": [], "logprobs": []},
         )
 
-        first = True
-        for token, used, docs, usage in stream_answer(
-            req["question"], history,
-            instructions=req["instructions"], options=req["options"],
-            documents=documents,
-        ):
-            if first:
-                first = False
-                state["docs"] = docs
-                continue
-
+        for token, usage in stream_answer(prompt, req["options"]):
             if token:
                 state["answer"] += token
                 yield _sse_event(
@@ -314,11 +307,12 @@ async def create_response(
                     item_id=item_id, output_index=0, content_index=0,
                     delta=token, logprobs=[],
                 )
-
-            if used is not None:
-                state["used_sources"] = used
             if usage is not None:
                 state["usage"] = usage
+
+        used = find_used_sources(state["answer"], retrieved) if retrieved else []
+        combined = (sources or []) + used
+        state["used_sources"] = combined or None
 
         src_text = format_sources(state["used_sources"])
         if src_text:

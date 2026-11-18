@@ -7,12 +7,12 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
+from starlette.concurrency import iterate_in_threadpool
 
 from app.db.database import get_db
 from app.db import crud
 
-from app.core.llm import stream_answer
+from app.core.llm import find_used_sources, stream_answer
 from app.core.auth import get_user_id
 from app.api.deps import get_owned_completion, parse_file_id
 from app.api.openai_request import (
@@ -20,7 +20,7 @@ from app.api.openai_request import (
     reject_inline_attachment,
 )
 from app.api.generation import (
-    collect, format_sources, persist, resolve_files, sampling_options,
+    format_sources, generate, persist, prepare, resolve_files, sampling_options,
 )
 
 router = APIRouter(prefix="/v1/chat/completions", tags=["chat"])
@@ -169,9 +169,9 @@ async def chat_completions(
     conversation_id_str = str(conversation_id) if conversation_id else None
 
     if not req["stream"]:
-        gen = await run_in_threadpool(
-            collect, req["question"], req["history"],
-            req["instructions"], req["options"], documents,
+        gen = await generate(
+            req["question"], req["history"], req["instructions"],
+            req["options"], documents,
         )
         answer = gen.answer + format_sources(gen.used_sources)
 
@@ -181,31 +181,26 @@ async def chat_completions(
         return _completion_object(completion_id, created, model,
                                   conversation_id_str, answer, gen.usage)
 
-    state = {"answer": "", "used_sources": None, "docs": None, "usage": None}
+    prompt, sources, retrieved = await prepare(
+        req["question"], req["history"], req["instructions"], documents,
+    )
+    state = {"answer": "", "used_sources": None, "docs": retrieved, "usage": None}
 
     def _gen():
-        first = True
-        for token, used, docs, usage in stream_answer(
-            req["question"], req["history"],
-            instructions=req["instructions"], options=req["options"],
-            documents=documents,
-        ):
-            if first:
-                first = False
-                state["docs"] = docs
-                yield _chunk(completion_id, created, model, conversation_id_str,
-                             {"role": "assistant", "content": ""})
-                continue
+        yield _chunk(completion_id, created, model, conversation_id_str,
+                     {"role": "assistant", "content": ""})
 
+        for token, usage in stream_answer(prompt, req["options"]):
             if token:
                 state["answer"] += token
                 yield _chunk(completion_id, created, model, conversation_id_str,
                              {"content": token})
-
-            if used is not None:
-                state["used_sources"] = used
             if usage is not None:
                 state["usage"] = usage
+
+        used = find_used_sources(state["answer"], retrieved) if retrieved else []
+        combined = (sources or []) + used
+        state["used_sources"] = combined or None
 
         src_text = format_sources(state["used_sources"])
         if src_text:

@@ -4,9 +4,11 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 from fastapi import HTTPException
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
-from app.core.llm import stream_answer
+from app.core.context import ContextOverflow, Document
+from app.core.llm import build, find_used_sources, stream_answer
 from app.core.retrieval import DocResult
 from app.db.database import AsyncSessionLocal
 from app.db import crud
@@ -29,12 +31,6 @@ def trim_docs(docs: list[DocResult] | None) -> list[dict] | None:
             "score": round(d["score"], 3)}
         for d in docs
     ]
-
-
-@dataclass
-class Document:
-    filename: str
-    markdown: str
 
 
 @dataclass
@@ -73,28 +69,49 @@ async def resolve_files(
         docs.append(Document(
             filename=f.filename,
             markdown=f.markdown_content or "",
+            tokens=f.markdown_tokens,
         ))
 
     return docs
 
 
-def collect(question, history, instructions=None, options=None, documents=None) -> Generation:
+async def prepare(question, history, instructions, documents):
+    """Ретрив + сборка промпта (в threadpool). ContextOverflow -> 413."""
+    try:
+        return await run_in_threadpool(
+            build, question, history, instructions, documents,
+        )
+    except ContextOverflow as e:
+        raise HTTPException(413, str(e)) from e
+
+
+def collect(prompt, options) -> Generation:
     out = Generation()
 
-    for token, used, docs, usage in stream_answer(
-        question, history, instructions=instructions, options=options,
-        documents=documents,
-    ):
-        if docs is not None:
-            out.docs = docs
+    for token, usage in stream_answer(prompt, options):
         if token:
             out.answer += token
-        if used is not None:
-            out.used_sources = used
         if usage is not None:
             out.usage = usage
 
     return out
+
+
+def finalize(gen: Generation, sources: list[str] | None, retrieved: list | None) -> Generation:
+    gen.docs = retrieved
+    used = find_used_sources(gen.answer, retrieved) if retrieved else []
+    combined = (sources or []) + used
+    gen.used_sources = combined or None
+    return gen
+
+
+async def generate(question, history, instructions, options, documents) -> Generation:
+    """Нестрим-путь целиком: ретрив + промпт + ответ + источники."""
+    prompt, sources, retrieved = await prepare(
+        question, history, instructions, documents,
+    )
+    gen = await run_in_threadpool(collect, prompt, options)
+    return finalize(gen, sources, retrieved)
 
 
 def sampling_options(
