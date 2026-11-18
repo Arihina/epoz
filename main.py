@@ -11,11 +11,15 @@ from app.api.responses import router as responses_router
 from app.api.feedback import router as feedback_router
 from app.api.sources import router as sources_router
 from app.api.conversations import router as conversations_router
-from app.api.files import router as files_router
+from app.api.files import router as files_router, recover_stuck_files
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    try:
+        await recover_stuck_files()
+    except Exception as exc:
+        print(f"[files] reaper при старте не отработал: {exc}")
     yield
 
 
