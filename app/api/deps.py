@@ -59,3 +59,23 @@ async def get_owned_file(
     if f is None:
         raise HTTPException(404, "Файл не найден")
     return f
+
+
+def parse_document_id(document_id: str) -> UUID:
+    raw = document_id.removeprefix("doc-")
+    try:
+        return UUID(raw)
+    except ValueError:
+        raise HTTPException(422, "Некорректный id документа")
+
+
+async def get_owned_generated_document(
+    document_id: str,
+    user_id: UUID = Depends(get_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    d = await crud.get_generated_document_for_user(
+        db, parse_document_id(document_id), user_id)
+    if d is None:
+        raise HTTPException(404, "Документ не найден")
+    return d
