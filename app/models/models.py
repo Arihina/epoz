@@ -154,3 +154,34 @@ class File(Base):
             name="ck_file_status",
         ),
     )
+
+
+class GeneratedDocument(Base):
+    __tablename__ = "generated_documents"
+
+    id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid4,
+    )
+    user_id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True,
+    )
+    template_file_id: Mapped[Optional[PyUUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("files.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    format: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="docx")
+    markdown_content: Mapped[str] = mapped_column(Text, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0)
+    artifact_bytes: Mapped[Optional[bytes]] = mapped_column(
+        LargeBinary, nullable=True, deferred=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
