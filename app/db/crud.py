@@ -310,18 +310,17 @@ async def create_generated_document(
     template_file_id,
     filename: str,
     format: str,
-    markdown_content: str,
-    artifact_bytes: Optional[bytes],
-    size_bytes: int,
+    instructions: Optional[str],
 ) -> GeneratedDocument:
     doc = GeneratedDocument(
         user_id=user_id,
         template_file_id=template_file_id,
         filename=filename,
         format=format,
-        markdown_content=markdown_content,
-        artifact_bytes=artifact_bytes,
-        size_bytes=size_bytes,
+        instructions=instructions,
+        markdown_content="",
+        size_bytes=0,
+        status="pending",
     )
     db.add(doc)
 
@@ -329,6 +328,13 @@ async def create_generated_document(
     await db.refresh(doc)
 
     return doc
+
+
+async def get_generated_document(db, doc_id: UUID) -> Optional[GeneratedDocument]:
+    result = await db.execute(
+        select(GeneratedDocument).where(GeneratedDocument.id == doc_id)
+    )
+    return result.scalar_one_or_none()
 
 
 async def get_generated_document_for_user(db, doc_id: UUID, user_id) -> Optional[GeneratedDocument]:
@@ -365,3 +371,38 @@ async def list_generated_documents(db, user_id) -> list[GeneratedDocument]:
 async def delete_generated_document(db, doc: GeneratedDocument) -> None:
     await db.delete(doc)
     await db.commit()
+
+
+async def set_generated_document_processing(db, doc: GeneratedDocument) -> GeneratedDocument:
+    doc.status = "processing"
+
+    await db.commit()
+    await db.refresh(doc)
+
+    return doc
+
+
+async def set_generated_document_done(
+    db, doc: GeneratedDocument, markdown_content: str,
+    artifact_bytes: Optional[bytes], size_bytes: int,
+) -> GeneratedDocument:
+    doc.status = "done"
+    doc.markdown_content = markdown_content
+    doc.artifact_bytes = artifact_bytes
+    doc.size_bytes = size_bytes
+    doc.error_message = None
+
+    await db.commit()
+    await db.refresh(doc)
+
+    return doc
+
+
+async def set_generated_document_failed(db, doc: GeneratedDocument, error_message: str) -> GeneratedDocument:
+    doc.status = "failed"
+    doc.error_message = error_message
+
+    await db.commit()
+    await db.refresh(doc)
+
+    return doc

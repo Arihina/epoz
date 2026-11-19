@@ -172,11 +172,15 @@ class GeneratedDocument(Base):
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     format: Mapped[str] = mapped_column(
         String(16), nullable=False, default="docx")
+    instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending")
     markdown_content: Mapped[str] = mapped_column(Text, nullable=False)
     size_bytes: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=0)
     artifact_bytes: Mapped[Optional[bytes]] = mapped_column(
         LargeBinary, nullable=True, deferred=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -184,4 +188,11 @@ class GeneratedDocument(Base):
         TIMESTAMP(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'done', 'failed')",
+            name="ck_generated_documents_status",
+        ),
     )
