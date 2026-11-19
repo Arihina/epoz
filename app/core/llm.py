@@ -7,7 +7,7 @@ import ollama
 from app.core.retrieval import retrieve, lookup_glossary, expand_query, DocResult
 from app.core.config import settings
 from app.core.tokens import make_counter
-from app.core.context import build_prompt
+from app.core.context import build_prompt, build_generation_prompt
 
 OLLAMA_HOST = settings.OLLAMA_HOST
 OLLAMA_MODEL = settings.OLLAMA_MODEL
@@ -209,3 +209,29 @@ def stream_answer(
         "total_tokens": prompt_tokens + completion_tokens,
     }
     yield "", usage
+
+
+def generate_document_markdown(template_markdown, template_filename, instructions, options=None):
+    """Заполнить шаблон по ЕПоЗ: ретрив + промпт + нестрим-генерация."""
+    counter = get_counter()
+    query = instructions or template_filename
+    retrieved = retrieve(expand_query(query))
+    glossary_hits = lookup_glossary(query)
+    if glossary_hits:
+        retrieved = glossary_hits + retrieved
+
+    prompt = build_generation_prompt(
+        template_markdown=template_markdown,
+        instructions=instructions,
+        retrieved=retrieved,
+        counter=counter,
+        num_ctx=settings.CONTEXT_WINDOW,
+        reserve_output=settings.RESERVE_OUTPUT_TOKENS,
+        safety=settings.CONTEXT_SAFETY_TOKENS,
+    )
+
+    answer = ""
+    for token, usage in stream_answer(prompt, options):
+        if token:
+            answer += token
+    return answer

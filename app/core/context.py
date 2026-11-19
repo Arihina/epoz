@@ -300,3 +300,67 @@ def build_prompt(
     )
 
     return BuiltPrompt(prompt, sources, stats, truncated_files)
+
+
+HEAD_GENERATION = """Ты русскоязычный AI ассистент.
+Отвечай ТОЛЬКО на русском языке.
+Ты заполняешь шаблон документа на основании Единого положения о закупках (ЕПоЗ).
+Заполняй только теми фактами, которые есть в приведённом контексте ЕПоЗ.
+Чего в контексте нет — оставь как есть или явно пометь, что данные отсутствуют; НЕ выдумывай нормы, сроки и реквизиты.
+Верни ПОЛНЫЙ заполненный документ в формате markdown, без пояснений и комментариев."""
+
+
+def _generation_skeleton(head, instr, context_block, template_markdown) -> str:
+    return f"""{head}
+{instr}
+Контекст ЕПоЗ:
+{context_block}
+
+Шаблон документа (заполни поля, верни полный документ):
+{template_markdown}
+
+Заполненный документ (markdown):""".strip()
+
+
+def build_generation_prompt(
+    *,
+    template_markdown: str,
+    instructions: str | None,
+    retrieved: list[dict],
+    counter: TokenCounter,
+    num_ctx: int,
+    reserve_output: int,
+    safety: int = 128,
+) -> str:
+    """Промпт для генерации документа по шаблону: шаблон держим целиком (это
+    структура результата), чанки ЕПоЗ подбираем в остаток окна."""
+    instr = ""
+    if instructions and instructions.strip():
+        instr = f"Инструкция: {instructions.strip()}\n"
+
+    fixed = counter.count(
+        _generation_skeleton(HEAD_GENERATION, instr, "", template_markdown)
+    ) + JOIN_SLACK
+    free = num_ctx - reserve_output - safety - fixed
+
+    if free < 0:
+        needed = fixed + reserve_output + safety
+        raise ContextOverflow(
+            "Шаблон вместе с инструкциями не помещается в контекст модели: "
+            f"нужно {needed} токенов при лимите {num_ctx}. Сократите шаблон "
+            "или увеличьте CONTEXT_WINDOW.",
+            needed=needed, available=num_ctx,
+        )
+
+    fitted: list[str] = []
+    used = 0
+    for c in retrieved:
+        text = c.get("text", "")
+        cost = counter.count(text) + counter.count(c.get("source", "unknown")) + 12
+        if used + cost > free:
+            continue
+        used += cost
+        fitted.append(text)
+
+    context_block = _chunks_block(fitted)
+    return _generation_skeleton(HEAD_GENERATION, instr, context_block, template_markdown)
