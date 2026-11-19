@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import undefer
-from app.models.models import ChatMessage, MessageFeedback, Conversation, File
+from app.models.models import ChatMessage, MessageFeedback, Conversation, File, GeneratedDocument
 
 
 async def create_conversation(db: AsyncSession, user_id, title: Optional[str] = None) -> Conversation:
@@ -300,3 +300,68 @@ async def set_file_failed(db: AsyncSession, f: File, error_message: str) -> File
     await db.refresh(f)
 
     return f
+
+
+# сгенерированные документы
+
+async def create_generated_document(
+    db: AsyncSession,
+    user_id,
+    template_file_id,
+    filename: str,
+    format: str,
+    markdown_content: str,
+    artifact_bytes: Optional[bytes],
+    size_bytes: int,
+) -> GeneratedDocument:
+    doc = GeneratedDocument(
+        user_id=user_id,
+        template_file_id=template_file_id,
+        filename=filename,
+        format=format,
+        markdown_content=markdown_content,
+        artifact_bytes=artifact_bytes,
+        size_bytes=size_bytes,
+    )
+    db.add(doc)
+
+    await db.commit()
+    await db.refresh(doc)
+
+    return doc
+
+
+async def get_generated_document_for_user(db, doc_id: UUID, user_id) -> Optional[GeneratedDocument]:
+    result = await db.execute(
+        select(GeneratedDocument).where(
+            GeneratedDocument.id == doc_id,
+            GeneratedDocument.user_id == user_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_generated_document_artifact(db, doc_id: UUID, user_id) -> Optional[GeneratedDocument]:
+    result = await db.execute(
+        select(GeneratedDocument)
+        .options(undefer(GeneratedDocument.artifact_bytes))
+        .where(
+            GeneratedDocument.id == doc_id,
+            GeneratedDocument.user_id == user_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def list_generated_documents(db, user_id) -> list[GeneratedDocument]:
+    result = await db.execute(
+        select(GeneratedDocument)
+        .where(GeneratedDocument.user_id == user_id)
+        .order_by(GeneratedDocument.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+async def delete_generated_document(db, doc: GeneratedDocument) -> None:
+    await db.delete(doc)
+    await db.commit()
