@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 import pypandoc
-from fastapi import APIRouter, Body, Depends, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Response
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
-from app.db.database import get_db
+from app.db.database import AsyncSessionLocal, get_db
 from app.db import crud
 from app.models.models import GeneratedDocument
 
@@ -19,6 +21,10 @@ from app.api.deps import get_owned_generated_document, parse_document_id, parse_
 router = APIRouter(prefix="/v1/documents", tags=["documents"])
 
 _EXT = {"docx": ".docx", "md": ".md"}
+MAX_GENERATION_CONCURRENCY = 2
+
+_gen_semaphore = asyncio.Semaphore(MAX_GENERATION_CONCURRENCY)
+_bg_tasks: set[asyncio.Task] = set()
 
 
 def _fmt_doc(d: GeneratedDocument) -> dict:
@@ -29,6 +35,8 @@ def _fmt_doc(d: GeneratedDocument) -> dict:
         "format": d.format,
         "template_file_id": f"file-{d.template_file_id}" if d.template_file_id else None,
         "bytes": d.size_bytes,
+        "status": d.status,
+        "status_details": d.error_message,
         "created_at": int(d.created_at.timestamp()),
     }
 
@@ -42,8 +50,81 @@ def _to_docx(markdown: str) -> bytes:
     return pypandoc.convert_text(markdown, "docx", format="md")
 
 
+async def process_generation(doc_id: UUID) -> None:
+    """Фоновая генерация: pending -> processing -> done/failed."""
+    async with _gen_semaphore:
+        async with AsyncSessionLocal() as db:
+            doc = await crud.get_generated_document(db, doc_id)
+            if doc is None or doc.status != "pending":
+                return
+
+            template = None
+            if doc.template_file_id is not None:
+                template = await crud.get_file_for_user(
+                    db, doc.template_file_id, doc.user_id)
+            if template is None or template.status != "done":
+                await crud.set_generated_document_failed(
+                    db, doc, "Шаблон не найден или не готов")
+                return
+
+            template_md = template.markdown_content or ""
+            await crud.set_generated_document_processing(db, doc)
+
+            try:
+                filled = await run_in_threadpool(
+                    generate_document_markdown, template_md, template.filename,
+                    doc.instructions, None,
+                )
+            except ContextOverflow as e:
+                await crud.set_generated_document_failed(db, doc, str(e))
+                return
+            except Exception as e:
+                await crud.set_generated_document_failed(db, doc, str(e))
+                return
+
+            artifact: bytes | None = None
+            if doc.format == "docx":
+                try:
+                    artifact = await run_in_threadpool(_to_docx, filled)
+                except Exception as e:
+                    await crud.set_generated_document_failed(
+                        db, doc, f"Не удалось собрать DOCX (pandoc): {e}")
+                    return
+
+            size = len(artifact) if artifact is not None else len(filled.encode("utf-8"))
+            await crud.set_generated_document_done(
+                db, doc, markdown_content=filled,
+                artifact_bytes=artifact, size_bytes=size,
+            )
+
+
+def _spawn(doc_id: UUID) -> None:
+    task = asyncio.create_task(process_generation(doc_id))
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+
+
+async def recover_stuck_generations() -> None:
+    """Reaper: зависшие processing -> pending, перезапуск pending."""
+    async with AsyncSessionLocal() as db:
+        await db.execute(
+            update(GeneratedDocument)
+            .where(GeneratedDocument.status == "processing")
+            .values(status="pending")
+        )
+        result = await db.execute(
+            select(GeneratedDocument.id).where(GeneratedDocument.status == "pending")
+        )
+        ids = [row[0] for row in result.all()]
+        await db.commit()
+
+    for doc_id in ids:
+        _spawn(doc_id)
+
+
 @router.post("/generate", status_code=201)
 async def generate_document(
+    background_tasks: BackgroundTasks,
     body: dict = Body(...),
     user_id: UUID = Depends(get_user_id),
     db: AsyncSession = Depends(get_db),
@@ -65,34 +146,13 @@ async def generate_document(
         raise HTTPException(
             400, f"Шаблон ещё не готов (статус обработки: {template.status})")
 
-    template_md = template.markdown_content or ""
-    if not template_md.strip():
-        raise HTTPException(400, "Шаблон пуст")
-
-    try:
-        filled = await run_in_threadpool(
-            generate_document_markdown, template_md, template.filename,
-            instructions, None,
-        )
-    except ContextOverflow as e:
-        raise HTTPException(413, str(e)) from e
-
-    artifact: bytes | None = None
-    if fmt == "docx":
-        try:
-            artifact = await run_in_threadpool(_to_docx, filled)
-        except Exception as e:
-            raise HTTPException(
-                500, f"Не удалось собрать DOCX (pandoc недоступен?): {e}") from e
-
-    size = len(artifact) if artifact is not None else len(filled.encode("utf-8"))
     filename = _output_filename(template.filename, fmt)
-
     doc = await crud.create_generated_document(
         db, user_id=user_id, template_file_id=template.id,
-        filename=filename, format=fmt, markdown_content=filled,
-        artifact_bytes=artifact, size_bytes=size,
+        filename=filename, format=fmt, instructions=instructions,
     )
+
+    background_tasks.add_task(process_generation, doc.id)
     return _fmt_doc(doc)
 
 
