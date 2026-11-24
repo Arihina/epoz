@@ -27,6 +27,7 @@
         --qdrant_url http://localhost:6336 \
         [--collection rag_docs_hybrid] \
         [--model BAAI/bge-m3] \
+        [--device cpu] \
         [--reset]
 """
 
@@ -41,6 +42,7 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 from qdrant_client import QdrantClient, models
 
+from app.core.config import settings
 from app.core.embedder import (
     DENSE_DIM,
     DENSE_VECTOR,
@@ -524,11 +526,13 @@ def index_documents(
     batch_size:     int = DEFAULT_BATCH_SIZE,
     max_length:     int = DEFAULT_MAX_LENGTH,
     local_files_only: bool = False,
+    device:         str | None = None,
 ) -> None:
     print(f"Загрузка модели: {model_name}")
     embedder = BgeM3Embedder(
         model_name,
         local_files_only=local_files_only,
+        device=device or settings.EMBED_DEVICE,
         batch_size=batch_size,
         max_length=max_length,
     )
@@ -594,6 +598,9 @@ def main() -> None:
                         help="Текстов на один проход модели")
     parser.add_argument("--max_length",    type=int, default=DEFAULT_MAX_LENGTH,
                         help="Максимум токенов на текст (BGE-M3: до 8192)")
+    parser.add_argument("--device",        default=settings.EMBED_DEVICE,
+                        help="Устройство модели: cpu | cuda | cuda:0 "
+                             "(по умолчанию EMBED_DEVICE из .env)")
     parser.add_argument("--local_files_only", action="store_true",
                         help="Не обращаться к HF Hub, брать модель из кэша")
     parser.add_argument("--reset",         action="store_true",
@@ -611,6 +618,7 @@ def main() -> None:
         batch_size=args.batch_size,
         max_length=args.max_length,
         local_files_only=args.local_files_only,
+        device=args.device,
     )
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import threading
 
 from qdrant_client import QdrantClient, models
 
@@ -51,27 +52,103 @@ def _check_embed_model(client, collection: str, expected_model: str) -> None:
         )
 
 
-qdrant = QdrantClient(url=QDRANT_URL)
-_check_embed_model(qdrant, QDRANT_COLLECTION, EMBED_MODEL)
-embed_model = BgeM3Embedder(
-    EMBED_MODEL,
-    local_files_only=settings.EMBED_LOCAL_FILES_ONLY,
-    device=settings.EMBED_DEVICE,
-)
+# Ленивая инициализация тяжёлых зависимостей
 
-glossary = Glossary(qdrant, QDRANT_COLLECTION)
+_qdrant: QdrantClient | None = None
+_embed_model: BgeM3Embedder | None = None
+_reranker: Reranker | None = None
+_glossary: Glossary | None = None
 
-reranker = None
-if settings.RERANK_ENABLED:
-    try:
-        reranker = Reranker(
-            settings.RERANK_MODEL,
-            local_files_only=settings.EMBED_LOCAL_FILES_ONLY,
-            device=settings.EMBED_DEVICE,
-        )
-    except Exception as exc:
-        print(f"[retrieval] Reranker недоступен, переранжирование отключено: {exc}")
-        reranker = None
+_qdrant_lock = threading.Lock()
+_embed_lock = threading.Lock()
+_rerank_lock = threading.Lock()
+_glossary_lock = threading.Lock()
+_reranker_checked = False
+
+
+def get_qdrant() -> QdrantClient:
+    """Ленивый singleton Qdrant-клиента.
+
+    Проверка «коллекция проиндексирована той же моделью» выполняется здесь, а не
+    на импорте: при недоступном Qdrant сервис всё равно поднимается, а ошибка
+    всплывает на первом поиске.
+    """
+    global _qdrant
+
+    if _qdrant is not None:
+        return _qdrant
+
+    with _qdrant_lock:
+        if _qdrant is None:
+            client = QdrantClient(url=QDRANT_URL)
+            _check_embed_model(client, QDRANT_COLLECTION, EMBED_MODEL)
+            _qdrant = client
+    return _qdrant
+
+
+def get_embed_model() -> BgeM3Embedder:
+    """Ленивая загрузка BGE-M3: ноль VRAM при импорте, одна копия на процесс."""
+    global _embed_model
+
+    if _embed_model is not None:
+        return _embed_model
+
+    with _embed_lock:
+        if _embed_model is None:
+            get_qdrant()
+            print(
+                f"[retrieval] Загрузка эмбеддера {EMBED_MODEL} "
+                f"на {settings.EMBED_DEVICE}"
+            )
+            _embed_model = BgeM3Embedder(
+                EMBED_MODEL,
+                local_files_only=settings.EMBED_LOCAL_FILES_ONLY,
+                device=settings.EMBED_DEVICE,
+            )
+    return _embed_model
+
+
+def get_reranker() -> Reranker | None:
+    """Ленивый реранкер; None, если отключён конфигом или не загрузился."""
+    global _reranker, _reranker_checked
+
+    if _reranker_checked:
+        return _reranker
+
+    with _rerank_lock:
+        if not _reranker_checked:
+            if settings.RERANK_ENABLED:
+                try:
+                    print(
+                        f"[retrieval] Загрузка реранкера {settings.RERANK_MODEL} "
+                        f"на {settings.EMBED_DEVICE}"
+                    )
+                    _reranker = Reranker(
+                        settings.RERANK_MODEL,
+                        local_files_only=settings.EMBED_LOCAL_FILES_ONLY,
+                        device=settings.EMBED_DEVICE,
+                    )
+                except Exception as exc:
+                    print(
+                        "[retrieval] Reranker недоступен, "
+                        f"переранжирование отключено: {exc}"
+                    )
+                    _reranker = None
+            _reranker_checked = True
+    return _reranker
+
+
+def get_glossary() -> Glossary:
+    """Ленивая загрузка глоссария (scroll по Qdrant), а не на импорте."""
+    global _glossary
+
+    if _glossary is not None:
+        return _glossary
+
+    with _glossary_lock:
+        if _glossary is None:
+            _glossary = Glossary(get_qdrant(), QDRANT_COLLECTION)
+    return _glossary
 
 
 def _tokenize(text: str) -> list[str]:
@@ -118,6 +195,9 @@ def _to_result(chunk_id, text: str, meta: dict, score: float) -> DocResult:
 
 def _hybrid_search(query: str, limit: int) -> list[DocResult]:
     """Dense + sparse одним запросом к Qdrant, слияние — RRF на стороне сервера."""
+    embed_model = get_embed_model()
+    qdrant = get_qdrant()
+
     try:
         dense_vecs, sparse_vecs = embed_model.encode([query])
     except Exception as exc:
@@ -168,12 +248,12 @@ def _hybrid_search(query: str, limit: int) -> list[DocResult]:
 
 def lookup_glossary(query: str) -> list[DocResult]:
     """Точное совпадение термина/аббревиатуры в глоссарии (для мини-роутинга)."""
-    return glossary.lookup(query)
+    return get_glossary().lookup(query)
 
 
 def expand_query(query: str) -> str:
     """Заменить известные аббревиатуры на расшифровки перед поиском."""
-    return glossary.expand(query)
+    return get_glossary().expand(query)
 
 
 def _minmax(scores: list[float]) -> list[float]:
@@ -183,7 +263,11 @@ def _minmax(scores: list[float]) -> list[float]:
     return [(s - lo) / (hi - lo) for s in scores]
 
 
-def _rerank(query: str, candidates: list[DocResult]) -> list[DocResult]:
+def _rerank(
+    query: str,
+    candidates: list[DocResult],
+    reranker: Reranker,
+) -> list[DocResult]:
     """Смесь RRF-скора и cross-encoder'а: RERANK_ALPHA — вес cross-encoder'а."""
     texts = [c["text"] for c in candidates]
     cross = reranker.score(query, texts)
@@ -199,11 +283,14 @@ def _rerank(query: str, candidates: list[DocResult]) -> list[DocResult]:
 
 
 def retrieve(query: str, top_k: int = RETRIEVAL_TOP_K) -> list[DocResult]:
+    get_embed_model()
+    reranker = get_reranker()
+
     multiplier = RERANK_CANDIDATE_MULTIPLIER if reranker else PREFETCH_MULTIPLIER
     candidates = _hybrid_search(query, top_k * multiplier)
 
     if reranker is not None:
-        candidates = _rerank(query, candidates)
+        candidates = _rerank(query, candidates, reranker)
 
     for r in candidates:
         r["score"] += _chunk_score_boost(r.get("_meta", {}))
