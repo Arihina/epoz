@@ -38,8 +38,14 @@ python3 create_collection_hybrid.py \
 alembic upgrade head
 ```
 ```
-python3 main.py
+# прод / обычный запуск (без reload)
+uvicorn main:app --host 127.0.0.1 --port 8001
+
+# dev: авто-перезагрузка
+uvicorn main:app --host 127.0.0.1 --port 8001 --reload
 ```
+
+`python3 main.py` тоже работает: reload включается только при `ENV != prod`.
 
 > Коллекция `rag_docs_hybrid` хранит два именованных вектора: `dense` (1024, cosine) и `sparse` (лексические веса BGE-M3). Поиск гибридный — Qdrant сливает обе ветки через RRF. Если коллекция создана старой версией скрипта (только `dense`), индексация остановится с подсказкой: пересоздайте коллекцию с `--reset`.
 
@@ -48,6 +54,8 @@ python3 main.py
 > huggingface-cli download BAAI/bge-m3
 > huggingface-cli download BAAI/bge-reranker-v2-m3
 > ```
+
+> Эмбеддер, реранкер и глоссарий загружаются **лениво** — при первом поисковом запросе, а не при импорте или старте. Поэтому `/health` не трогает GPU, а `python main.py` с reload не создаёт вторую копию моделей (раньше это давало OOM на старте). `uvicorn --workers N` по-прежнему множит модели на N процессов: держите `workers=1` либо `EMBED_DEVICE=cpu`.
 
 > Схему ведёт только Alembic — приложение не создаёт таблицы при старте. `alembic upgrade head` обязателен перед первым запуском, иначе сервис упадёт при первом запросе.
 
@@ -163,7 +171,7 @@ QDRANT_PORT=6336
 QDRANT_COLLECTION=rag_docs_hybrid
 
 # эмбеддер BGE-M3
-EMBED_DEVICE=                  # пусто = авто (cuda:0 при GPU, иначе CPU)
+EMBED_DEVICE=cpu               # cpu | cuda | cuda:0 | mps; cpu освобождает VRAM для Ollama
 EMBED_LOCAL_FILES_ONLY=false   # true = только из локального кэша HF (офлайн)
 
 # reranker (cross-encoder)
